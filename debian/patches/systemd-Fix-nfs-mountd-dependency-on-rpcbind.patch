@@ -1,0 +1,44 @@
+Description: systemd: Fix nfs-mountd dependency on rpcbind
+
+Following commit 91da135f - it replaced "rpcbind.target" by "rpcbind.socket" in
+some unit files - "rpcbind.socket" should also be added to "nfs-mountd.service"
+as a dependency to avoid race conditions.
+
+Usually "rpcbind.socket" is either started as a "sockets.target" dependency, or
+as a dependency for "nfs-server.service", when unit files include it in
+"BindsTo" or "After". Unfortunately there is a possilibility to have
+"nfs-mountd.service" started when the rpcbind socket is not yet created:
+
+systemd[1]: Starting NFS Mount Daemon...
+systemd[1]: nfs-mountd.service: Control process exited, code=exited status=1
+systemd[1]: Failed to start NFS Mount Daemon.
+systemd[1]: nfs-mountd.service: Unit entered failed state.
+systemd[1]: nfs-mountd.service: Failed with result 'exit-code'.
+
+Nowadays "nfs-mountd.service" uses "BindTo" directive to "nfs-server.service".
+That, per se, doesn't guarantee ordering for NFS server to start rpcbind and for
+nfs-mountd to depend on it.
+
+https://bugs.launchpad.net/bugs/1590799
+
+Reviewed-by: NeilBrown <neilb@suse.com>
+Signed-off-by: Rafael David Tinoco <rafael.tinoco@canonical.com>
+Signed-off-by: Steve Dickson <steved@redhat.com>
+-
+Author: Rafael David Tinoco <rafael.tinoco@canonical.com>
+Origin: upstream, commit: 907426b00bdcd69d9a56ac1870990e8ae8c6fe9f
+Bug-Debian: https://bugs.debian.org/856328
+Bug-Ubuntu: https://launchpad.net/bugs/1590799
+Reviewed-By: Rafael David Tinoco <rafael.tinoco@canonical.com>
+Last-Update: 2017-03-01
+
+--- nfs-utils-1.2.8.orig/systemd/nfs-mountd.service
++++ nfs-utils-1.2.8/systemd/nfs-mountd.service
+@@ -4,6 +4,7 @@ DefaultDependencies=no
+ Requires=proc-fs-nfsd.mount
+ After=proc-fs-nfsd.mount
+ After=network.target local-fs.target
++After=rpcbind.socket
+ BindsTo=nfs-server.service
+ 
+ Wants=nfs-config.service

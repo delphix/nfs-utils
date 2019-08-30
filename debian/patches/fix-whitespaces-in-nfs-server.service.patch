@@ -1,0 +1,35 @@
+Description: Remove whitespaces after '=' in .service file
+ Service files should not have spaces surrounding the = key. They are not
+ explicitly supported by systemd, and third party tools have been known
+ to break.
+ .
+Author: Balint Reczey <rbalint@ubuntu.com>
+
+---
+Forwarded: https://bugzilla.linux-nfs.org/show_bug.cgi?id=319
+Last-Update: 2018-01-16
+
+--- nfs-utils-1.3.4.orig/systemd/nfs-server.service
++++ nfs-utils-1.3.4/systemd/nfs-server.service
+@@ -1,15 +1,15 @@
+ [Unit]
+ Description=NFS server and services
+ DefaultDependencies=no
+-Requires= network.target proc-fs-nfsd.mount
+-Requires= nfs-mountd.service
++Requires=network.target proc-fs-nfsd.mount
++Requires=nfs-mountd.service
+ Wants=rpcbind.socket
+ Wants=nfs-idmapd.service
+ 
+-After= local-fs.target
+-After= network.target proc-fs-nfsd.mount rpcbind.socket nfs-mountd.service
+-After= nfs-idmapd.service rpc-statd.service
+-Before= rpc-statd-notify.service
++After=local-fs.target
++After=network.target proc-fs-nfsd.mount rpcbind.socket nfs-mountd.service
++After=nfs-idmapd.service rpc-statd.service
++Before=rpc-statd-notify.service
+ 
+ # GSS services dependencies and ordering
+ Wants=auth-rpcgss-module.service

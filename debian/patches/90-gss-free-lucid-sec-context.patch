@@ -1,0 +1,20 @@
+From: Sergio Gelato <Sergio.Gelato@astro.su.se>
+Subject: Fix gss_free_lucid_sec_context() call
+ Commit 051eb4863cf880f0349a1de44517f9c99a9c5bd4 changed 
+ serialize_krb5_ctx() to take a pointer to gss_ctx_id_t instead of a
+ gss_ctx_id_t directly. The call to gss_export_lucid_sec_context()
+ was adjusted accordingly but the call to gss_free_lucid_sec_context()
+ was not.
+Bug-Ubuntu: https://launchpad.net/bugs/1331201
+
+--- a/utils/gssd/context_lucid.c
++++ b/utils/gssd/context_lucid.c
+@@ -302,7 +302,7 @@
+ 	else
+ 		retcode = prepare_krb5_rfc4121_buffer(lctx, buf, endtime);
+ 
+-	maj_stat = gss_free_lucid_sec_context(&min_stat, ctx, return_ctx);
++	maj_stat = gss_free_lucid_sec_context(&min_stat, *ctx, return_ctx);
+ 	if (maj_stat != GSS_S_COMPLETE) {
+ 		pgsserr("gss_free_lucid_sec_context",
+ 			maj_stat, min_stat, &krb5oid);

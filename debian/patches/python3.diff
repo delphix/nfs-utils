@@ -1,0 +1,97 @@
+--- nfs-utils-1.3.4.orig/tools/mountstats/mountstats.py
++++ nfs-utils-1.3.4/tools/mountstats/mountstats.py
+@@ -1,10 +1,8 @@
+-#!/usr/bin/env python
++#!/usr/bin/python3
+ # -*- python-mode -*-
+ """Parse /proc/self/mountstats and display it in human readable form
+ """
+ 
+-from __future__ import print_function
+-
+ __copyright__ = """
+ Copyright (C) 2005, Chuck Lever <cel@netapp.com>
+ 
+@@ -522,9 +520,9 @@ class DeviceData:
+         protocol = self.__rpc_data['protocol']
+ 
+         # copy self into result
+-        for key, value in self.__nfs_data.items():
++        for key, value in list(self.__nfs_data.items()):
+             result.__nfs_data[key] = value
+-        for key, value in self.__rpc_data.items():
++        for key, value in list(self.__rpc_data.items()):
+             result.__rpc_data[key] = value
+ 
+         # compute the difference of each item in the list
+@@ -711,7 +709,7 @@ def mountstats_command(args):
+                 continue
+         mountpoints = check
+     else:
+-        for device, descr in mountstats.items():
++        for device, descr in list(mountstats.items()):
+             stats = DeviceData()
+             stats.parse_stats(descr)
+             if stats.is_nfs_mountpoint():
+@@ -770,7 +768,7 @@ def nfsstat_command(args):
+                 continue
+         mountpoints = check
+     else:
+-        for device, descr in mountstats.items():
++        for device, descr in list(mountstats.items()):
+             stats = DeviceData()
+             stats.parse_stats(descr)
+             if stats.is_nfs_mountpoint():
+@@ -801,7 +799,7 @@ def nfsstat_command(args):
+         elif vers == 4 and (show_both or args.show_v4):
+            v4stats.accumulate_iostats(acc_stats)
+ 
+-    sends, retrans, authrefrsh = map(add, v3stats.client_rpc_stats(), v4stats.client_rpc_stats())
++    sends, retrans, authrefrsh = list(map(add, v3stats.client_rpc_stats(), v4stats.client_rpc_stats()))
+     print('Client rpc stats:')
+     print('calls      retrans    authrefrsh')
+     print('%-11u%-11u%-11u' % (sends, retrans, authrefrsh))
+@@ -852,7 +850,7 @@ def iostat_command(args):
+                 continue
+         devices = check
+     else:
+-        for device, descr in mountstats.items():
++        for device, descr in list(mountstats.items()):
+             stats = DeviceData()
+             stats.parse_stats(descr)
+             if stats.is_nfs_mountpoint():
+--- nfs-utils-1.3.4.orig/tools/nfs-iostat/nfs-iostat.py
++++ nfs-utils-1.3.4/tools/nfs-iostat/nfs-iostat.py
+@@ -1,10 +1,8 @@
+-#!/usr/bin/python
++#!/usr/bin/python3
+ # -*- python-mode -*-
+ """Emulate iostat for NFS mount points using /proc/self/mountstats
+ """
+ 
+-from __future__ import print_function
+-
+ __copyright__ = """
+ Copyright (C) 2005, Chuck Lever <cel@netapp.com>
+ 
+@@ -203,9 +201,9 @@ class DeviceData:
+         result = DeviceData()
+ 
+         # copy self into result
+-        for key, value in self.__nfs_data.items():
++        for key, value in list(self.__nfs_data.items()):
+             result.__nfs_data[key] = value
+-        for key, value in self.__rpc_data.items():
++        for key, value in list(self.__rpc_data.items()):
+             result.__rpc_data[key] = value
+ 
+         # compute the difference of each item in the list
+@@ -494,7 +492,7 @@ def list_nfs_mounts(givenlist, mountstat
+             if stats.is_nfs_mountpoint():
+                 list += [device]
+     else:
+-        for device, descr in mountstats.items():
++        for device, descr in list(mountstats.items()):
+             stats = DeviceData()
+             stats.parse_stats(descr)
+             if stats.is_nfs_mountpoint():

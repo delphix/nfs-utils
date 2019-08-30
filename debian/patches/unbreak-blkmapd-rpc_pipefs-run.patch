@@ -1,0 +1,25 @@
+From: Christoph Hellwig <hch@lst.de>
+Subject: nfs-common: move of rpc_pipefs mountpoint to /run breaks blkmapd
+
+commit ba649fa4 ("Migrate the rpc_pipefs mount out of /var/lib to /run, to
+better support /var on NFS.") in the Debian packaging repo completely
+broke blkmapd, which still looks for rpc_pipefs in the old place.
+From looking in the BTS gssd also seems to have the same problem (#632141).
+
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=828826
+
+--- a/utils/blkmapd/device-discovery.c
++++ b/utils/blkmapd/device-discovery.c
+@@ -56,9 +56,9 @@
+ #define EVENT_SIZE (sizeof(struct inotify_event))
+ #define EVENT_BUFSIZE (1024 * EVENT_SIZE)
+ 
+-#define BL_PIPE_FILE	"/var/lib/nfs/rpc_pipefs/nfs/blocklayout"
+-#define NFSPIPE_DIR	"/var/lib/nfs/rpc_pipefs/nfs"
+-#define RPCPIPE_DIR	"/var/lib/nfs/rpc_pipefs"
++#define BL_PIPE_FILE	"/run/rpc_pipefs/nfs/blocklayout"
++#define NFSPIPE_DIR	"/run/rpc_pipefs/nfs"
++#define RPCPIPE_DIR	"/run/rpc_pipefs"
+ #define PID_FILE	"/run/blkmapd.pid"
+ 
+ struct bl_disk *visible_disk_list;

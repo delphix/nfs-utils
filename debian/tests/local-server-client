@@ -1,0 +1,65 @@
+#!/bin/sh
+# install server and client, do some mounts, verify that it boots and works
+set -e
+
+if ! [ -x /tmp/autopkgtest-reboot ]; then
+    echo "SKIP: testbed does not support rebooting"
+    exit 0
+fi
+
+pre_boot_setup() {
+    # set up some exports
+    cat <<EOF >> /etc/exports
+/home localhost(rw,no_root_squash,no_subtree_check)
+/var/log/ localhost(ro,no_root_squash,subtree_check)
+EOF
+
+    # set up client mounts
+    mkdir -p /mnt/nfs_home /mnt/nfs_log
+    cat << EOF >> /etc/fstab
+localhost:/home /mnt/nfs_home nfs defaults,nofail 0 0
+localhost:/var/log /mnt/nfs_log nfs defaults,nofail 0 0
+EOF
+}
+
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
+post_boot_tests() {
+    # ensure we have our mounts
+    mount | grep 'localhost:.*nfs_home' || fail "nfs_home not mounted"
+    mount | grep 'localhost:.*nfs_log' || fail "nfs_log not mounted"
+
+    # test that we can write to NFS export and get it in /home
+    [ ! -e /home/hello.txt ] || fail "/home/hello.txt already exists"
+    echo world > /mnt/nfs_home/hello.txt
+    sync
+    [ -e /home/hello.txt ] || fail "/home/hello.txt does not exist"
+    [ "$(cat /home/hello.txt)" = "world" ] || fail "/home/hello.txt has wrong contents"
+
+    # test that we can write to /home and get it in NFS
+    rm /home/hello.txt
+    echo 2 > /proc/sys/vm/drop_caches
+    [ ! -e /mnt/nfs_home/hello.txt ] || fail "/mnt/nfs_home/hello.txt exists after removal"
+
+    # read-only, should fail
+    ! touch /mnt/nfs_log/pwned 2>/dev/null || fail "writing to r/o /mnt/nfs_log succeeded"
+
+    # our systemd jobs have a rather delicate dependency structure and run
+    # early; ensure that we did not run into any cycles
+    if [ -d /run/systemd/system ]; then
+        if journalctl | grep 'Found ordering cycle'; then
+            journalctl -p warning || true
+            fail "found ordering cycle in units"
+        fi
+    fi
+}
+
+if [ -z "$ADT_REBOOT_MARK" ]; then
+    pre_boot_setup
+    /tmp/autopkgtest-reboot boot1
+else
+    post_boot_tests
+fi

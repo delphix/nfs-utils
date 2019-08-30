@@ -1,0 +1,3 @@
+compression = "bzip2"
+compression-level = 9
+extend-diff-ignore = "(^|/)(config.sub|config.guess|Makefile.in|configure|config.log|aclocal.m4|ltmain.sh|aclocal/libtool.m4)$"

@@ -1,0 +1,9 @@
+etc/init.d
+sbin
+usr/sbin
+var/lib/nfs
+var/lib/nfs/sm
+var/lib/nfs/sm.bak
+usr/share/nfs-common/conffiles
+usr/share/bug/nfs-common
+usr/share/bug/nfs-utils

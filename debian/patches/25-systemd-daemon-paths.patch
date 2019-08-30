@@ -1,0 +1,24 @@
+Description: Adjust program paths in systemd units
+Author: Martin Pitt <martin.pitt@ubuntu.com>
+Forwarded: No
+
+Index: nfs-utils-1.2.8/systemd/rpc-statd-notify.service
+===================================================================
+--- nfs-utils-1.2.8.orig/systemd/rpc-statd-notify.service
++++ nfs-utils-1.2.8/systemd/rpc-statd-notify.service
+@@ -16,4 +16,4 @@ After=nfs-config.service
+ [Service]
+ EnvironmentFile=-/run/sysconfig/nfs-utils
+ Type=forking
+-ExecStart=-/usr/sbin/sm-notify $SMNOTIFYARGS
++ExecStart=-/sbin/sm-notify $SMNOTIFYARGS
+Index: nfs-utils-1.2.8/systemd/rpc-statd.service
+===================================================================
+--- nfs-utils-1.2.8.orig/systemd/rpc-statd.service
++++ nfs-utils-1.2.8/systemd/rpc-statd.service
+@@ -14,4 +14,4 @@ After=nfs-config.service
+ EnvironmentFile=-/run/sysconfig/nfs-utils
+ Type=forking
+ PIDFile=/var/run/rpc.statd.pid
+-ExecStart=/usr/sbin/rpc.statd --no-notify $STATDARGS
++ExecStart=/sbin/rpc.statd --no-notify $STATDARGS

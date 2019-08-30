@@ -1,0 +1,67 @@
+Description: Let sysadmins enable/disable statd services
+ As the admin was able to control under upstart the statd services with
+ NEED_STATD in default conffiles, mirror this funcationality under systemd
+ by letting the user systemctl enable/disable statd services.
+Author: Didier Roche <didrocks@ubuntu.com>
+Bug-Ubuntu: https://launchpad.net/bugs/1428486
+
+diff --git a/systemd/nfs-client.target b/systemd/nfs-client.target
+index 8a8300a..55f82ee 100644
+--- a/systemd/nfs-client.target
++++ b/systemd/nfs-client.target
+@@ -3,9 +3,7 @@ Description=NFS client services
+ Before=remote-fs-pre.target
+ Wants=remote-fs-pre.target
+ 
+-# Note: we don't "Wants=rpc-statd.service" as "mount.nfs" will arrange to
+-# start that on demand if needed.
+-Wants=rpc-statd-notify.service
++Wants=nfs-blkmap.service
+ 
+ # GSS services dependencies and ordering
+ Wants=auth-rpcgss-module.service
+diff --git a/systemd/nfs-server.service b/systemd/nfs-server.service
+index 2ccdc63..fe88b15 100644
+--- a/systemd/nfs-server.service
++++ b/systemd/nfs-server.service
+@@ -4,8 +4,7 @@ DefaultDependencies=no
+ Requires= network.target proc-fs-nfsd.mount
+ Requires= nfs-mountd.service
+ Wants=rpcbind.socket
+-Wants=rpc-statd.service nfs-idmapd.service
+-Wants=rpc-statd-notify.service
++Wants=nfs-idmapd.service
+ 
+ After= local-fs.target
+ After= network.target proc-fs-nfsd.mount rpcbind.socket nfs-mountd.service
+diff --git a/systemd/rpc-statd-notify.service b/systemd/rpc-statd-notify.service
+index 91cf370..05c54ef 100644
+--- a/systemd/rpc-statd-notify.service
++++ b/systemd/rpc-statd-notify.service
+@@ -17,3 +17,6 @@ After=nfs-config.service
+ EnvironmentFile=-/run/sysconfig/nfs-utils
+ Type=forking
+ ExecStart=-/sbin/sm-notify $SMNOTIFYARGS
++
++[Install]
++WantedBy=nfs-client.target
+diff --git a/systemd/rpc-statd.service b/systemd/rpc-statd.service
+index 6ba0aa1..2138f74 100644
+--- a/systemd/rpc-statd.service
++++ b/systemd/rpc-statd.service
+@@ -7,7 +7,7 @@ After=network.target nss-lookup.target rpcbind.socket
+ 
+ PartOf=nfs-utils.service
+ 
+-Wants=nfs-config.service
++Wants=nfs-config.service rpc-statd-notify.service
+ After=nfs-config.service
+ 
+ [Service]
+@@ -15,3 +15,6 @@ EnvironmentFile=-/run/sysconfig/nfs-utils
+ Type=forking
+ PIDFile=/var/run/rpc.statd.pid
+ ExecStart=/sbin/rpc.statd --no-notify $STATDARGS
++
++[Install]
++WantedBy=nfs-server.service

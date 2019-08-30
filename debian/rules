@@ -1,0 +1,83 @@
+#! /usr/bin/make -f
+
+# Parsing of DEB_BUILD_OPTIONS flags.
+# Note that nostrip is handled automatically by debhelper.
+CFLAGS := -g -Wall -DPIPEFS_DIR=\\\"/run/rpc_pipefs\\\" \
+		-DGSSD_PIPEFS_DIR=\\\"/run/rpc_pipefs\\\"
+
+ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
+    CFLAGS += -O0
+else
+    CFLAGS += -O2
+endif
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+    NUMJOBS = $(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+    MAKEFLAGS += -j$(NUMJOBS)
+endif
+
+# Temporary root
+DEBTMP := $(CURDIR)/debian/tmp
+
+build: build-indep build-arch
+build-indep: build-stamp
+build-arch: build-stamp
+build-stamp:
+	dh_testdir
+	dh_autoreconf
+	CFLAGS="$(CFLAGS)" dh_auto_configure -- \
+		--enable-nfsv41 \
+		--enable-ipv6 \
+		--enable-libmount-mount \
+                --enable-svcgss \
+		--with-tcp-wrappers
+	$(MAKE) $(MAKEFLAGS)
+	touch build-stamp
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp
+	rm -rf $(DEBTMP)
+	[ ! -f Makefile ] || $(MAKE) distclean
+	dh_autoreconf_clean
+	dh_clean
+
+binary-indep: build
+binary-arch: build
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs
+	mkdir $(DEBTMP)
+	$(MAKE) DESTDIR='$(DEBTMP)' install
+	dh_installman
+	dh_install -Xman --fail-missing
+	dh_installdocs -A
+	dh_installdocs -pnfs-common debian/README.Debian.nfsv4
+	dh_systemd_enable -p nfs-common nfs-client.target
+	dh_systemd_enable -p nfs-kernel-server nfs-server.service
+	dh_installinit -pnfs-common -R
+	dh_systemd_start -p nfs-common --restart-after-upgrade nfs-utils.service
+	dh_systemd_start -p nfs-kernel-server --restart-after-upgrade nfs-server.service
+	install -m 0755 debian/nfs-kernel-server.init debian/nfs-kernel-server/etc/init.d/nfs-kernel-server
+	install -m 0644 debian/nfs-common.bugcontrol debian/nfs-common/usr/share/bug/nfs-common/control
+	install -m 0755 debian/nfs-common.bugscript debian/nfs-common/usr/share/bug/nfs-common/script
+	install -m 0644 debian/nfs-utils.bugcontrol debian/nfs-common/usr/share/bug/nfs-utils/control
+	install -m 0644 debian/nfs-utils.bugpresubj debian/nfs-common/usr/share/bug/nfs-utils/presubj
+	install -m 0755 debian/nfs-kernel-server.bugscript debian/nfs-kernel-server/usr/share/bug/nfs-kernel-server/script
+	dh_link
+	dh_installchangelogs
+	dh_lintian
+	dh_strip
+	dh_compress
+	dh_fixperms
+	chmod +x debian/nfs-common/usr/lib/systemd/scripts/nfs-utils_env.sh
+	chmod u+s debian/nfs-common/sbin/mount.nfs
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums -Xvar/lib
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary

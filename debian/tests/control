@@ -1,0 +1,4 @@
+Tests: local-server-client
+Depends: nfs-kernel-server
+# we need machine isolation as we need to modprobe stuff
+Restrictions: needs-root, isolation-machine, breaks-testbed

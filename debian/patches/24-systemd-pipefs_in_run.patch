@@ -1,0 +1,95 @@
+Description: systemd: Mount rpc_pipefs in /run instead of /var/lib/nfs/
+Author: Martin Pitt <martin.pitt@ubuntu.com>
+Forwarded: No
+
+diff --git a/systemd/nfs-blkmap.service b/systemd/nfs-blkmap.service
+index ddbf4e9..69a8970 100644
+--- a/systemd/nfs-blkmap.service
++++ b/systemd/nfs-blkmap.service
+@@ -2,8 +2,8 @@
+ Description=pNFS block layout mapping daemon
+ DefaultDependencies=no
+ Conflicts=umount.target
+-After=var-lib-nfs-rpc_pipefs.mount
+-Requires=var-lib-nfs-rpc_pipefs.mount
++After=run-rpc_pipefs.mount
++Requires=run-rpc_pipefs.mount
+ 
+ PartOf=nfs-utils.service
+ 
+diff --git a/systemd/nfs-idmapd.service b/systemd/nfs-idmapd.service
+index df3dd9d..a6a27ca 100644
+--- a/systemd/nfs-idmapd.service
++++ b/systemd/nfs-idmapd.service
+@@ -1,8 +1,8 @@
+ [Unit]
+ Description=NFSv4 ID-name mapping service
+ DefaultDependencies=no
+-Requires=var-lib-nfs-rpc_pipefs.mount
+-After=var-lib-nfs-rpc_pipefs.mount local-fs.target
++Requires=run-rpc_pipefs.mount
++After=run-rpc_pipefs.mount local-fs.target
+ 
+ BindsTo=nfs-server.service
+ 
+diff --git a/systemd/rpc-gssd.service b/systemd/rpc-gssd.service
+index d4a3819..68e4247 100644
+--- a/systemd/rpc-gssd.service
++++ b/systemd/rpc-gssd.service
+@@ -2,8 +2,8 @@
+ Description=RPC security service for NFS client and server
+ DefaultDependencies=no
+ Conflicts=umount.target
+-Requires=var-lib-nfs-rpc_pipefs.mount
+-After=var-lib-nfs-rpc_pipefs.mount
++Requires=run-rpc_pipefs.mount
++After=run-rpc_pipefs.mount
+ 
+ ConditionPathExists=/etc/krb5.keytab
+ 
+diff --git a/systemd/rpc-svcgssd.service b/systemd/rpc-svcgssd.service
+index 41177b6..ef783ee 100644
+--- a/systemd/rpc-svcgssd.service
++++ b/systemd/rpc-svcgssd.service
+@@ -1,8 +1,8 @@
+ [Unit]
+ Description=RPC security service for NFS server
+ DefaultDependencies=no
+-Requires=var-lib-nfs-rpc_pipefs.mount
+-After=var-lib-nfs-rpc_pipefs.mount local-fs.target
++Requires=run-rpc_pipefs.mount
++After=run-rpc_pipefs.mount local-fs.target
+ PartOf=nfs-server.service
+ PartOf=nfs-utils.service
+ 
+diff --git a/systemd/run-rpc_pipefs.mount b/systemd/run-rpc_pipefs.mount
+new file mode 100644
+index 0000000..3fb5ff8
+--- /dev/null
++++ b/systemd/run-rpc_pipefs.mount
+@@ -0,0 +1,9 @@
++[Unit]
++Description=RPC Pipe File System
++DefaultDependencies=no
++Conflicts=umount.target
++
++[Mount]
++What=sunrpc
++Where=/run/rpc_pipefs
++Type=rpc_pipefs
+diff --git a/systemd/var-lib-nfs-rpc_pipefs.mount b/systemd/var-lib-nfs-rpc_pipefs.mount
+deleted file mode 100644
+index 26d1c76..0000000
+--- a/systemd/var-lib-nfs-rpc_pipefs.mount
++++ /dev/null
+@@ -1,10 +0,0 @@
+-[Unit]
+-Description=RPC Pipe File System
+-DefaultDependencies=no
+-After=systemd-tmpfiles-setup.service
+-Conflicts=umount.target
+-
+-[Mount]
+-What=sunrpc
+-Where=/var/lib/nfs/rpc_pipefs
+-Type=rpc_pipefs
