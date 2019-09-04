@@ -20,6 +20,7 @@ debian/tmp/var/lib/nfs/state
 debian/idmapd.conf usr/share/nfs-common/conffiles/
 debian/nfs-common.default usr/share/nfs-common/conffiles/
 debian/id_resolver.conf etc/request-key.d/
+debian/nfs-server-prep.sh /usr/lib/systemd/scripts/
 debian/nfs-utils_env.sh /usr/lib/systemd/scripts/
 systemd/*.mount /lib/systemd/system
 systemd/*rpc*.service /lib/systemd/system
