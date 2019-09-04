@@ -55,6 +55,7 @@ void		cache_open(void);
 struct nfs_fh_len *
 		cache_get_filehandle(nfs_export *exp, int len, char *p);
 int		cache_export(nfs_export *exp, char *path);
+int		cache_expire_subdirs(nfs_export *exp, char *path);
 
 bool ipaddr_client_matches(nfs_export *exp, struct addrinfo *ai);
 bool namelist_client_matches(nfs_export *exp, char *dom);
