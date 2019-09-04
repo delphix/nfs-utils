@@ -881,6 +881,12 @@ static void write_secinfo(char **bp, int *blen, struct exportent *ep, int flag_m
 
 }
 
+/*
+ * The ttl parameter represents the amount of time the cache entry will be
+ * valid, specified in seconds. Passing a negative value will cause the entry
+ * to be immediately expired. Passing 0 is a special case which causes the
+ * default TTL to be used.
+ */
 static int dump_to_cache(int f, char *buf, int buflen, char *domain,
 			 char *path, struct exportent *exp, int ttl)
 {
@@ -888,7 +894,7 @@ static int dump_to_cache(int f, char *buf, int buflen, char *domain,
 	int blen = buflen;
 	time_t now = time(0);
 
-	if (ttl <= 1)
+	if (ttl == 0)
 		ttl = DEFAULT_TTL;
 
 	qword_add(&bp, &blen, domain);
@@ -1427,6 +1433,54 @@ int cache_process_req(fd_set *readfds)
 		}
 	}
 	return cnt;
+}
+
+/*
+ * Expire export cache entries in path which are subdirectories of
+ * exp->m_export.e_path. For instance, if exp->m_export.e_path is
+ *     /a/b
+ * and path is
+ *     /a/b/c/d/e
+ * this will expire the export cach entries for
+ *     /a/b/c
+ *     /a/b/c/d
+ *     /a/b/c/d/e
+ */
+int cache_expire_subdirs(nfs_export *exp, char *path)
+{
+	char buf[RPC_CHAN_BUF_SIZE];
+
+	char *exp_path = exp->m_export.e_path;
+	char *domain = exp->m_client->m_hostname;
+
+	/* Nothing to do if path isn't a subdirectory of exp_path. */
+	unsigned int l = strlen(exp_path);
+	if (strlen(path) <= l || path[l] != '/' ||
+	    strncmp(exp_path, path, l) != 0)
+		return 0;
+
+	int f = open("/proc/net/rpc/nfsd.export/channel", O_WRONLY);
+	if (f < 0)
+		return -1;
+	while (path[l]) {
+		l++;
+		while (path[l] != '/' && path[l])
+			l++;
+		char saved = path[l];
+		path[l] = 0;
+		xlog(L_WARNING, "expiring %s\n", path);
+		/*
+		 * A negative TTL will cause the entry to be immediately
+		 * expired. We choose a time a few seconds in the past to
+		 * make sure we don't hit any possible edge cases in the
+		 * cache's flush/expiration logic.
+		 */
+		dump_to_cache(f, buf, sizeof(buf), domain, path, NULL, -10);
+		path[l] = saved;
+	}
+
+	close(f);
+	return 0;
 }
 
 
