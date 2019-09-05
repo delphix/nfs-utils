@@ -26,6 +26,7 @@ EnvironmentFile=-/run/sysconfig/nfs-utils
 
 Type=oneshot
 RemainAfterExit=yes
+ExecStartPre=/usr/lib/systemd/scripts/nfs-server-prep.sh
 ExecStartPre=/usr/sbin/exportfs -r
 ExecStart=/usr/sbin/rpc.nfsd $RPCNFSDARGS
 ExecStop=/usr/sbin/rpc.nfsd 0
