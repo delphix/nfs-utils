@@ -14,11 +14,5 @@ case "$1" in
 		 /var/lib/nfs/xtab; do
 	    [ -e $f ] || touch $f
 	done
-
-	update-rc.d nfs-kernel-server defaults 20 80 >/dev/null
     ;;
 esac
-
-act="restart"
-[ "$1:$2" = "configure:" ] && act="start"
-invoke-rc.d nfs-kernel-server $act || echo "Failed to ${act} nfs-kernel-server, ignoring."
