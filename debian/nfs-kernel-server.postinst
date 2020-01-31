@@ -3,7 +3,9 @@
 set -e
 set -x
 
+exportfs -s || true
 #DEBHELPER#
+exportfs -s || true
 
 case "$1" in
     configure)

@@ -42,4 +42,6 @@ case "$1" in
     ;;
 esac
 
+exportfs -s || true
 #DEBHELPER#
+exportfs -s || true

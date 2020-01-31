@@ -3,7 +3,9 @@
 set -e
 set -x
 
+exportfs -s || true
 #DEBHELPER#
+exportfs -s || true
 
 if [ "$1" = remove ]
 then
