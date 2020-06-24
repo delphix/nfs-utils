@@ -259,7 +259,15 @@ by default.
 After starting,
 .B rpc.statd
 attempts to set its effective UID and GID to the owner
-and group of this directory.
+and group of the subdirectory
+.B sm
+of this directory.  After changing the effective ids,
+.B rpc.statd
+only needs to access files in
+.B sm
+and
+.B sm.bak
+within the state-directory-path.
 .TP
 .BR -v ", " -V ", " --version
 Causes
