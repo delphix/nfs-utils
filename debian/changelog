@@ -1,3 +1,14 @@
+nfs-utils (1:1.3.4-2.1ubuntu5.3) bionic-security; urgency=medium
+
+  * SECURITY UPDATE: privilege escalation via directory permissions
+    - debian/patches/CVE-2019-3689.patch: take user-id from
+      /var/lib/nfs/sm in support/nsm/file.c, utils/statd/sm-notify.man,
+      utils/statd/statd.man.
+    - debian/nfs-common.postinst: don't make /var/lib/nfs owned by statd.
+    - CVE-2019-3689
+
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 09 Jun 2020 08:15:08 -0400
+
 nfs-utils (1:1.3.4-2.1ubuntu5.2) bionic; urgency=medium
 
   * d/nfs-utils_env.sh: alongside RPCSVCGSSDARGS, also export SVCGSSDARGS,
