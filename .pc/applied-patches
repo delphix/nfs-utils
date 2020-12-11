@@ -17,3 +17,4 @@ python3.diff
 uint16-max.diff
 fix-whitespaces-in-nfs-server.service.patch
 nfsiostat-replace-list-reserved-word.patch
+CVE-2019-3689.patch
