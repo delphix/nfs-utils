@@ -1,0 +1,200 @@
+From 0386fc1757838a096ae318347bc0bbd3ba94570b Mon Sep 17 00:00:00 2001
+From: NeilBrown <neilb@suse.com>
+Date: Sat, 20 Aug 2016 10:19:19 -0400
+Subject: [PATCH] Move export_d_read() to support/export/export.c
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1871214
+Origin: upstream, http://git.linux-nfs.org/?p=steved/nfs-utils.git;a=commit;h=0386fc1757838a096ae318347bc0bbd3ba94570b
+
+This places it in the same place as the similar export_read(),
+and allows it to be called from other programs.
+
+Signed-off-by: NeilBrown <neilb@suse.com>
+Signed-off-by: Steve Dickson <steved@redhat.com>
+---
+ support/export/export.c    | 65 ++++++++++++++++++++++++++++++++++++++
+ support/include/exportfs.h |  1 +
+ utils/exportfs/exportfs.c  | 59 ----------------------------------
+ 3 files changed, 66 insertions(+), 59 deletions(-)
+
+diff --git a/support/export/export.c b/support/export/export.c
+index e1bebce..0b8a858 100644
+--- a/support/export/export.c
++++ b/support/export/export.c
+@@ -15,6 +15,8 @@
+ #include <sys/param.h>
+ #include <netinet/in.h>
+ #include <stdlib.h>
++#include <dirent.h>
++#include <errno.h>
+ #include "xmalloc.h"
+ #include "nfslib.h"
+ #include "exportfs.h"
+@@ -95,6 +97,69 @@ export_read(char *fname)
+ 	return volumes;
+ }
+ 
++/**
++ * export_d_read - read entries from /etc/exports.
++ * @fname: name of directory to read from
++ *
++ * Returns number of read entries.
++ * Based on mnt_table_parse_dir() in
++ *  util-linux-ng/shlibs/mount/src/tab_parse.c
++ */
++int
++export_d_read(const char *dname)
++{
++	int n = 0, i;
++	struct dirent **namelist = NULL;
++	int volumes = 0;
++
++
++	n = scandir(dname, &namelist, NULL, versionsort);
++	if (n < 0) {
++		if (errno == ENOENT)
++			/* Silently return */
++			return volumes;
++		xlog(L_NOTICE, "scandir %s: %s", dname, strerror(errno));
++	} else if (n == 0)
++		return volumes;
++
++	for (i = 0; i < n; i++) {
++		struct dirent *d = namelist[i];
++		size_t namesz;
++		char fname[PATH_MAX + 1];
++		int fname_len;
++
++
++		if (d->d_type != DT_UNKNOWN
++		    && d->d_type != DT_REG
++		    && d->d_type != DT_LNK)
++			continue;
++		if (*d->d_name == '.')
++			continue;
++
++#define _EXT_EXPORT_SIZ   (sizeof(_EXT_EXPORT) - 1)
++		namesz = strlen(d->d_name);
++		if (!namesz
++		    || namesz < _EXT_EXPORT_SIZ + 1
++		    || strcmp(d->d_name + (namesz - _EXT_EXPORT_SIZ),
++			      _EXT_EXPORT))
++			continue;
++
++		fname_len = snprintf(fname, PATH_MAX +1, "%s/%s", dname, d->d_name);
++		if (fname_len > PATH_MAX) {
++			xlog(L_WARNING, "Too long file name: %s in %s", d->d_name, dname);
++			continue;
++		}
++
++		volumes += export_read(fname);
++	}
++
++	for (i = 0; i < n; i++)
++		free(namelist[i]);
++	free(namelist);
++
++	return volumes;
++}
++
+ /**
+  * export_create - create an in-core nfs_export record from an export entry
+  * @xep: export entry to lookup
+diff --git a/support/include/exportfs.h b/support/include/exportfs.h
+index 4cac203..f033329 100644
+--- a/support/include/exportfs.h
++++ b/support/include/exportfs.h
+@@ -135,6 +135,7 @@ int 				client_member(const char *client,
+ 						const char *name);
+ 
+ int				export_read(char *fname);
++int				export_d_read(const char *dname);
+ void				export_reset(nfs_export *);
+ nfs_export *			export_lookup(char *hname, char *path, int caconical);
+ nfs_export *			export_find(const struct addrinfo *ai,
+diff --git a/utils/exportfs/exportfs.c b/utils/exportfs/exportfs.c
+index a00b5ea..4ac2c15 100644
+--- a/utils/exportfs/exportfs.c
++++ b/utils/exportfs/exportfs.c
+@@ -26,7 +26,6 @@
+ #include <fcntl.h>
+ #include <netdb.h>
+ #include <errno.h>
+-#include <dirent.h>
+ #include <limits.h>
+ #include <time.h>
+ 
+@@ -47,7 +46,6 @@ static void	error(nfs_export *exp, int err);
+ static void	usage(const char *progname, int n);
+ static void	validate_export(nfs_export *exp);
+ static int	matchhostname(const char *hostname1, const char *hostname2);
+-static int	export_d_read(const char *dname);
+ static void grab_lockfile(void);
+ static void release_lockfile(void);
+ 
+@@ -700,63 +698,6 @@ out:
+ 	return result;
+ }
+ 
+-/* Based on mnt_table_parse_dir() in
+-   util-linux-ng/shlibs/mount/src/tab_parse.c */
+-static int
+-export_d_read(const char *dname)
+-{
+-	int n = 0, i;
+-	struct dirent **namelist = NULL;
+-	int volumes = 0;
+-
+-
+-	n = scandir(dname, &namelist, NULL, versionsort);
+-	if (n < 0) {
+-		if (errno == ENOENT)
+-			/* Silently return */
+-			return volumes;
+-		xlog(L_NOTICE, "scandir %s: %s", dname, strerror(errno));
+-	} else if (n == 0)
+-		return volumes;
+-
+-	for (i = 0; i < n; i++) {
+-		struct dirent *d = namelist[i];
+-		size_t namesz;
+-		char fname[PATH_MAX + 1];
+-		int fname_len;
+-
+-
+-		if (d->d_type != DT_UNKNOWN
+-		    && d->d_type != DT_REG
+-		    && d->d_type != DT_LNK)
+-			continue;
+-		if (*d->d_name == '.')
+-			continue;
+-
+-#define _EXT_EXPORT_SIZ   (sizeof(_EXT_EXPORT) - 1)
+-		namesz = strlen(d->d_name);
+-		if (!namesz
+-		    || namesz < _EXT_EXPORT_SIZ + 1
+-		    || strcmp(d->d_name + (namesz - _EXT_EXPORT_SIZ),
+-			      _EXT_EXPORT))
+-			continue;
+-
+-		fname_len = snprintf(fname, PATH_MAX +1, "%s/%s", dname, d->d_name);
+-		if (fname_len > PATH_MAX) {
+-			xlog(L_WARNING, "Too long file name: %s in %s", d->d_name, dname);
+-			continue;
+-		}
+-
+-		volumes += export_read(fname);
+-	}
+-
+-	for (i = 0; i < n; i++)
+-		free(namelist[i]);
+-	free(namelist);
+-
+-	return volumes;
+-}
+-
+ static char
+ dumpopt(char c, char *fmt, ...)
+ {
+-- 
+2.25.1
+

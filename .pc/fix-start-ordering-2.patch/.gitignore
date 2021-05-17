@@ -69,7 +69,6 @@ tests/nsm_client/nlm_sm_inter_clnt.c
 tests/nsm_client/nlm_sm_inter_svc.c
 tests/nsm_client/nlm_sm_inter_xdr.c
 utils/nfsidmap/nfsidmap
-systemd/nfs-server-generator
 # cscope database files
 cscope.*
 # generic editor backup et al

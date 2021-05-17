@@ -38,20 +38,10 @@ endif
 
 EXTRA_DIST = $(unit_files)
 
-unit_dir = /lib/systemd/system
-generator_dir = /lib/systemd/system-generators
-
-EXTRA_PROGRAMS	= nfs-server-generator
-genexecdir = $(generator_dir)
-nfs_server_generator_LDADD = ../support/export/libexport.a \
-			     ../support/nfs/libnfs.a \
-			     ../support/misc/libmisc.a
+unit_dir = /usr/lib/systemd/system
 
 if INSTALL_SYSTEMD
-genexec_PROGRAMS = nfs-server-generator
 install-data-hook: $(unit_files)
 	mkdir -p $(DESTDIR)/$(unitdir)
 	cp $(unit_files) $(DESTDIR)/$(unitdir)
-else
-noinst_PROGRAMS = nfs-server-generator
 endif

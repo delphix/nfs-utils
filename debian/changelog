@@ -1,4 +1,4 @@
-nfs-utils (1:1.3.4-2.1ubuntu5.3) bionic-security; urgency=medium
+nfs-utils (1:1.3.4-2.5ubuntu3.3) focal-security; urgency=medium
 
   * SECURITY UPDATE: privilege escalation via directory permissions
     - debian/patches/CVE-2019-3689.patch: take user-id from
@@ -7,22 +7,193 @@ nfs-utils (1:1.3.4-2.1ubuntu5.3) bionic-security; urgency=medium
     - debian/nfs-common.postinst: don't make /var/lib/nfs owned by statd.
     - CVE-2019-3689
 
- -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Tue, 09 Jun 2020 08:15:08 -0400
+ -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Wed, 17 Jun 2020 08:42:59 -0400
 
-nfs-utils (1:1.3.4-2.1ubuntu5.2) bionic; urgency=medium
+nfs-utils (1:1.3.4-2.5ubuntu3.1) focal; urgency=medium
+
+  [ Rodrigo Barbieri ]
+  * d/p/fix-start-ordering-1.patch,
+    d/p/fix-start-ordering-2.patch,
+    d/p/fix-start-ordering-3.patch,
+    d/nfs-kernel-server.install:
+    - Fix systemd service start ordering (LP: #1871214)
+
+ -- Dariusz Gadomski <dgadomski@ubuntu.com>  Fri, 29 May 2020 08:32:24 +0200
+
+nfs-utils (1:1.3.4-2.5ubuntu3) focal; urgency=medium
+
+  * No-change rebuild for libevent soname changes.
+
+ -- Matthias Klose <doko@ubuntu.com>  Sat, 19 Oct 2019 19:57:12 +0000
+
+nfs-utils (1:1.3.4-2.5ubuntu2) eoan; urgency=medium
+
+  * No-change upload with strops.h and sys/strops.h removed in glibc.
+
+ -- Matthias Klose <doko@ubuntu.com>  Thu, 05 Sep 2019 11:04:05 +0000
+
+nfs-utils (1:1.3.4-2.5ubuntu1) eoan; urgency=low
+
+  * Merge from Debian unstable.  Remaining changes:
+    - debian/nfs-common.default: always start idmapd automatically; drop
+      the configuration option.
+    - Add 90-gss-free-lucid-sec-context.patch: adjust for changes to the ctx
+      argument of the serialize_krb5_ctx() function.
+    - Add remove-gssproxy.patch: Drop gssproxy as it does not exist in Ubuntu
+    - Fixing nfs-mountd dependency on rpcbind (race condition)
+      by adding "rpcbind.socket" to "nfs-mountd.service"  as a dependency
+      to avoid race conditions:
+      - Add systemd-Fix-nfs-mountd-dependency-on-rpcbind.patch
+    - Convert mountstats and nfsiostat scripts to Python3 and recommend
+      python3 instead of python.
+    - truncate_gid*.patch: Backports from upstream to prevent truncating
+      UIDs and GIDs over 65536 on certain architectures
+    - Remove hard-coded dep on libtirpc1.
+    - d/nfs-utils_env.sh: alongside RPCSVCGSSDARGS, also export SVCGSSDARGS,
+      which is the variable name expected by the rpc-svcgssd systemd service.
+    - d/p/nfsiostat-replace-list-reserved-word.patch: fix nfsiostat crash due
+      to using 'list' as a variable name.
+  * Dropped changes, included in Debian:
+    - glibc-2.28-compat.patch: Include <sys/sysmacros.h> for major/minor.
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 02 May 2019 22:43:12 -0700
+
+nfs-utils (1:1.3.4-2.5) unstable; urgency=medium
+
+  * Non-maintainer upload.
+
+  [ Micha Lenk ]
+  * [abaa2ab] handle_gssd_upcall: Fix failure to find uid in upcall string 'mech=krb5'
+    by adding the suggested upstream commits as
+    debian/patches/0010-gssd-replace-non-thread-safe-strtok-with-strsep.patch and
+    debian/patches/0011-gssd-Duplicate-the-upcall-string-for-error-messages.patch.
+    rpc.gssd: WARNING: handle_gssd_upcall: failed to find uid in upcall string 'mech=krb5'
+    (Closes: #895381)
+
+ -- Bernd Zeimetz <bzed@debian.org>  Sat, 06 Apr 2019 18:30:39 +0200
+
+nfs-utils (1:1.3.4-2.4) unstable; urgency=medium
+
+  [ Laurent Bigonville ]
+  * debian/control: Downgrade the priority to optional to match the override
+    file
+
+  [ Hilko Bengen ]
+  * Add missing include, fixing FTBFS with glibc 2.28 (Closes: #915995)
+
+ -- Hilko Bengen <bengen@debian.org>  Sat, 09 Feb 2019 15:26:27 +0100
+
+nfs-utils (1:1.3.4-2.3ubuntu3) disco; urgency=medium
+
+  * d/p/nfsiostat-replace-list-reserved-word.patch: fix nfsiostat crash due to
+    using 'list' as a variable name. (LP: #1821261)
+
+ -- Matthew Ruffell <matthew.ruffell@canonical.com>  Tue, 02 Apr 2019 11:09:15 +1300
+
+nfs-utils (1:1.3.4-2.3ubuntu2) disco; urgency=medium
 
   * d/nfs-utils_env.sh: alongside RPCSVCGSSDARGS, also export SVCGSSDARGS,
     which is the variable name expected by the rpc-svcgssd systemd service.
     (LP: #1616123)
 
- -- Andreas Hasenack <andreas@canonical.com>  Thu, 25 Apr 2019 17:17:31 -0300
+ -- Andreas Hasenack <andreas@canonical.com>  Mon, 25 Mar 2019 09:24:29 -0300
 
-nfs-utils (1:1.3.4-2.1ubuntu5.1) bionic; urgency=medium
+nfs-utils (1:1.3.4-2.3ubuntu1) disco; urgency=low
 
-  * d/p/nfsiostat-replace-list-reserved-word.patch: fix nfsiostat crash due to
-    using 'list' as a variable name. (LP: #1821261)
+  * Merge from Debian unstable.  Remaining changes:
+    - debian/nfs-common.default: always start idmapd automatically; drop
+      the configuration option.
+    - Add 90-gss-free-lucid-sec-context.patch: adjust for changes to the ctx
+      argument of the serialize_krb5_ctx() function.
+    - Add remove-gssproxy.patch: Drop gssproxy as it does not exist in Ubuntu
+      (LP: #1446851)
+    - Fixing nfs-mountd dependency on rpcbind (race condition) (LP: #1590799)
+      by adding "rpcbind.socket" to "nfs-mountd.service"  as a dependency
+      to avoid race conditions:
+      - Add systemd-Fix-nfs-mountd-dependency-on-rpcbind.patch
+    - Convert mountstats and nfsiostat scripts to Python3 and recommend
+      python3 instead of python.
+    - glibc-2.28-compat.patch: Include <sys/sysmacros.h> for major/minor.
+    - truncate_gid*.patch: Backports from upstream to prevent truncating
+      UIDs and GIDs over 65536 on certain architectures
+    - Remove hard-coded dep on libtirpc1.
 
- -- Matthew Ruffell <matthew.ruffell@canonical.com>  Tue, 02 Apr 2019 13:46:35 +1300
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 31 Jan 2019 23:18:10 -0800
+
+nfs-utils (1:1.3.4-2.3) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  [ Steve Langasek ]
+  * Fix flaky autopkgtest: a 'sync' after an update on the server does not
+    guarantee that the change is visible on the client.  For that, we need
+    to flush the inode/dentry cache instead.
+
+  [ Laurent Bigonville ]
+  * debian/control: Drop explicit dependency against libtirpc1 and bump
+    libtirpc-dev build-dependency to >= 1.0.2
+  * debian/watch: Update the URL and check the gpg signature (Closes: #895384)
+  * debian/control: Update Vcs-* fields to point to salsa
+  * debian/control: Bump Standards-Version to 4.2.1 (no further changes)
+  * d/p/30-remove-whitespace-service.patch: Remove extra whitespaces to fix
+    service-key-has-whitespace lintian error
+
+ -- Laurent Bigonville <bigon@debian.org>  Sat, 20 Oct 2018 15:04:07 +0200
+
+nfs-utils (1:1.3.4-2.2ubuntu5) disco; urgency=medium
+
+  * Remove hard-coded dep on libtirpc1.
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Tue, 13 Nov 2018 17:03:07 -0800
+
+nfs-utils (1:1.3.4-2.2ubuntu4) disco; urgency=medium
+
+  * No-change rebuild against latest libtirpc
+
+ -- Jeremy Bicha <jbicha@ubuntu.com>  Sat, 10 Nov 2018 07:54:17 -0500
+
+nfs-utils (1:1.3.4-2.2ubuntu3) cosmic; urgency=medium
+
+  * truncate_gid*.patch: Backports from upstream to prevent truncating
+    UIDs and GIDs over 65536 on certain architectures (LP: #1779962)
+
+ -- Adam Conrad <adconrad@ubuntu.com>  Tue, 16 Oct 2018 06:06:43 -0600
+
+nfs-utils (1:1.3.4-2.2ubuntu2) cosmic; urgency=medium
+
+  * glibc-2.28-compat.patch: Include <sys/sysmacros.h> for major/minor.
+
+ -- Adam Conrad <adconrad@ubuntu.com>  Tue, 16 Oct 2018 05:24:40 -0600
+
+nfs-utils (1:1.3.4-2.2ubuntu1) cosmic; urgency=medium
+
+  * Merge from Debian unstable.  Remaining changes:
+    - debian/nfs-common.default: always start idmapd automatically; drop
+      the configuration option.
+    - Add 90-gss-free-lucid-sec-context.patch: adjust for changes to the ctx
+      argument of the serialize_krb5_ctx() function.
+    - Add remove-gssproxy.patch: Drop gssproxy as it does not exist in Ubuntu
+      (LP: #1446851)
+    - Fixing nfs-mountd dependency on rpcbind (race condition) (LP: #1590799)
+      by adding "rpcbind.socket" to "nfs-mountd.service"  as a dependency
+      to avoid race conditions:
+      - Add systemd-Fix-nfs-mountd-dependency-on-rpcbind.patch
+    - Convert mountstats and nfsiostat scripts to Python3 and recommend
+      python3 instead of python.
+  * Dropped already integrated changes:
+    - Provide UINT16_MAX definition if not provided by glibc.
+
+ -- Balint Reczey <rbalint@ubuntu.com>  Thu, 23 Aug 2018 16:16:30 +0200
+
+nfs-utils (1:1.3.4-2.2) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * Add upstream fix for FTBFS with glibc 2.26,
+    thanks to Juhani Numminen. (Closes: #887695)
+  * Update the build dependency from the obsolete dh-systemd.
+  * Stop using bzip2 for source compression,
+    the default xz compresses better.
+
+ -- Adrian Bunk <bunk@debian.org>  Tue, 06 Feb 2018 21:20:36 +0200
 
 nfs-utils (1:1.3.4-2.1ubuntu5) bionic; urgency=medium
 

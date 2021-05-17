@@ -1,0 +1,24 @@
+Description: Build nfs-server-generator without --with-systemd flag
+Author: Dan Streetman <ddstreet@ubuntu.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1871214
+
+--- nfs-utils-1.3.4.orig/systemd/Makefile.am
++++ nfs-utils-1.3.4/systemd/Makefile.am
+@@ -38,8 +38,8 @@ endif
+ 
+ EXTRA_DIST = $(unit_files)
+ 
+-unit_dir = /usr/lib/systemd/system
+-generator_dir = /usr/lib/systemd/system-generators
++unit_dir = /lib/systemd/system
++generator_dir = /lib/systemd/system-generators
+ 
+ EXTRA_PROGRAMS	= nfs-server-generator
+ genexecdir = $(generator_dir)
+@@ -52,4 +52,6 @@ genexec_PROGRAMS = nfs-server-generator
+ install-data-hook: $(unit_files)
+ 	mkdir -p $(DESTDIR)/$(unitdir)
+ 	cp $(unit_files) $(DESTDIR)/$(unitdir)
++else
++noinst_PROGRAMS = nfs-server-generator
+ endif

@@ -15,6 +15,9 @@ Before=rpc-statd-notify.service
 Wants=auth-rpcgss-module.service
 After=rpc-gssd.service rpc-svcgssd.service
 
+# start/stop server before/after client
+Before=remote-fs-pre.target
+
 Wants=nfs-config.service
 After=nfs-config.service
 
@@ -23,7 +26,6 @@ EnvironmentFile=-/run/sysconfig/nfs-utils
 
 Type=oneshot
 RemainAfterExit=yes
-ExecStartPre=/usr/lib/systemd/scripts/nfs-server-prep.sh
 ExecStartPre=/usr/sbin/exportfs -r
 ExecStart=/usr/sbin/rpc.nfsd $RPCNFSDARGS
 ExecStop=/usr/sbin/rpc.nfsd 0

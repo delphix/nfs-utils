@@ -1,0 +1,64 @@
+From 2a6b8307fa4243a7921270aedf8ce6506e31569a Mon Sep 17 00:00:00 2001
+From: Steve Dickson <steved@redhat.com>
+Date: Tue, 17 Jul 2018 15:09:37 -0400
+Subject: [PATCH] rpc.gssd: truncates 32-bit UIDs/GIDs to 16 bits
+ architectures.
+
+utils/gssd_proc.c uses SYS_setresuid and SYS_setresgid in
+change_identity when it should use SYS_setresuid32 and
+SYS_setresgid32 instead. This causes it to truncate
+UIDs/GIDs > 65536.
+
+Fixes: https://bugs.launchpad.net/ubuntu/+source/nfs-utils/+bug/1779962
+Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=1595927
+
+Tested-by: James Ettle <theholyettlz@googlemail.com>
+Tested-by: Sree <Sree@gmail.com>
+Signed-off-by: Steve Dickson <steved@redhat.com>
+---
+ utils/gssd/gssd_proc.c | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/utils/gssd/gssd_proc.c b/utils/gssd/gssd_proc.c
+index 8767e26..7a57c4e 100644
+--- a/utils/gssd/gssd_proc.c
++++ b/utils/gssd/gssd_proc.c
+@@ -434,6 +434,7 @@ static int
+ change_identity(uid_t uid)
+ {
+ 	struct passwd	*pw;
++	int res;
+ 
+ 	/* drop list of supplimentary groups first */
+ 	if (syscall(SYS_setgroups, 0, 0) != 0) {
+@@ -459,14 +460,23 @@ change_identity(uid_t uid)
+ 	 * send a signal to all other threads to synchronize the uid in all
+ 	 * other threads. To bypass this, we have to call syscall() directly.
+ 	 */
+-	if (syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid) != 0) {
++#ifdef __NR_setresuid32
++	res = syscall(SYS_setresgid32, pw->pw_gid, pw->pw_gid, pw->pw_gid);
++#else 
++	res = syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid);
++#endif
++	if (res != 0) {
+ 		printerr(0, "WARNING: failed to set gid to %u!\n", pw->pw_gid);
+ 		return errno;
+ 	}
+ 
+-	if (syscall(SYS_setresuid, uid, uid, uid) != 0) {
+-		printerr(0, "WARNING: Failed to setuid for user with uid %u\n",
+-				uid);
++#ifdef __NR_setresuid32
++	res = syscall(SYS_setresuid32, uid, uid, uid);
++#else 
++	res = syscall(SYS_setresuid, uid, uid, uid);
++#endif
++	if (res != 0) {
++		printerr(0, "WARNING: Failed to setuid for user with uid %u\n", uid);
+ 		return errno;
+ 	}
+ 
+-- 
+1.8.3.1
+

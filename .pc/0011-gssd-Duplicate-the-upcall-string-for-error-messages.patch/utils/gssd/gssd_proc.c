@@ -434,7 +434,6 @@ static int
 change_identity(uid_t uid)
 {
 	struct passwd	*pw;
-	int res;
 
 	/* drop list of supplimentary groups first */
 	if (syscall(SYS_setgroups, 0, 0) != 0) {
@@ -460,23 +459,14 @@ change_identity(uid_t uid)
 	 * send a signal to all other threads to synchronize the uid in all
 	 * other threads. To bypass this, we have to call syscall() directly.
 	 */
-#ifdef __NR_setresgid32
-	res = syscall(SYS_setresgid32, pw->pw_gid, pw->pw_gid, pw->pw_gid);
-#else 
-	res = syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid);
-#endif
-	if (res != 0) {
+	if (syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid) != 0) {
 		printerr(0, "WARNING: failed to set gid to %u!\n", pw->pw_gid);
 		return errno;
 	}
 
-#ifdef __NR_setresuid32
-	res = syscall(SYS_setresuid32, uid, uid, uid);
-#else 
-	res = syscall(SYS_setresuid, uid, uid, uid);
-#endif
-	if (res != 0) {
-		printerr(0, "WARNING: Failed to setuid for user with uid %u\n", uid);
+	if (syscall(SYS_setresuid, uid, uid, uid) != 0) {
+		printerr(0, "WARNING: Failed to setuid for user with uid %u\n",
+				uid);
 		return errno;
 	}
 
@@ -739,16 +729,9 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	char			*target = NULL;
 	char			*service = NULL;
 	char			*enctypes = NULL;
-	char			*upcall_str;
 	char			*pbuf = info->lbuf;
 
 	printerr(2, "\n%s: '%s' (%s)\n", __func__, info->lbuf, clp->relpath);
-
-	upcall_str = strdup(info->lbuf);
-	if (upcall_str == NULL) {
-		printerr(0, "ERROR: malloc failure\n");
-		goto out_nomem;
-	}
 
 	while ((p = strsep(&pbuf, " "))) {
 		if (!strncmp(p, "mech=", strlen("mech=")))
@@ -766,7 +749,7 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	if (!mech || strlen(mech) < 1) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			    "failed to find gss mechanism name "
-			    "in upcall string '%s'\n", upcall_str);
+			    "in upcall string '%s'\n", info->lbuf);
 		goto out;
 	}
 
@@ -779,7 +762,7 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	if (!uidstr) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			    "failed to find uid "
-			    "in upcall string '%s'\n", upcall_str);
+			    "in upcall string '%s'\n", info->lbuf);
 		goto out;
 	}
 
@@ -792,7 +775,7 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	if (target && strlen(target) < 1) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			 "failed to parse target name "
-			 "in upcall string '%s'\n", upcall_str);
+			 "in upcall string '%s'\n", info->lbuf);
 		goto out;
 	}
 
@@ -807,7 +790,7 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	if (service && strlen(service) < 1) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			 "failed to parse service type "
-			 "in upcall string '%s'\n", upcall_str);
+			 "in upcall string '%s'\n", info->lbuf);
 		goto out;
 	}
 
@@ -820,8 +803,6 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 		do_error_downcall(clp->gssd_fd, uid, -EACCES);
 	}
 out:
-	free(upcall_str);
-out_nomem:
 	free(info);
 	return;
 }

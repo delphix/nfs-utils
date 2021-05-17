@@ -9,3 +9,4 @@ debian/etc.exports /usr/share/nfs-kernel-server/conffiles/
 systemd/nfs-blkmap.service /lib/systemd/system
 systemd/nfs-mountd.service /lib/systemd/system
 systemd/nfs-server.service /lib/systemd/system
+systemd/nfs-server-generator /lib/systemd/system-generators

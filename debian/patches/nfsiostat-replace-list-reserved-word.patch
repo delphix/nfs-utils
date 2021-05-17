@@ -1,8 +1,8 @@
 Description: nfsiostat: replace 'list' reserved word
- list is a reserved word in python and should not be used as a variable name. 
+ list is a reserved word in python and should not be used as a variable name.
  Changing list to devicelist for list_nfs_mounts().
 Forwarded: https://marc.info/?l=linux-nfs&m=155346326413894&w=2
-Applied-Upstream: http://git.linux-nfs.org/?p=steved/nfs-utils.git;a=commitdiff;h=c4c14011b70375050d7bba7c57e2eaf4c715dc7c
+Origin: upstream, http://git.linux-nfs.org/?p=steved/nfs-utils.git;a=commitdiff;h=c4c14011b70375050d7bba7c57e2eaf4c715dc7c
 Bug-Debian: http://bugs.debian.org/925943
 Bug-Ubuntu: https://launchpad.net/bugs/1821261
 Author: Matthew Ruffell <matthew.ruffell@canonical.com>
