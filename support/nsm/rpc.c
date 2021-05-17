@@ -38,6 +38,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 
+#include <stdint.h>
 #include <time.h>
 #include <stdbool.h>
 #include <string.h>
@@ -62,10 +63,6 @@
 #include "nfsrpc.h"
 #include "nsm.h"
 #include "sm_inter.h"
-
-#ifndef UINT16_MAX
-#   define UINT16_MAX      ((uint16_t)(65535U))
-#endif
 
 /*
  * Returns a fresh XID appropriate for RPC over UDP -- never zero.

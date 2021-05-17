@@ -24,7 +24,7 @@ case "$1" in
         # Don't make /var/lib/nfs owned by statd. Only sm and sm.bak need to be
         # accessible by statd or sm-notify after they drop privileges.
         # (CVE-2019-3689)
-        if dpkg --compare-versions "$2" lt 1:1.3.4-2.1ubuntu5.3; then
+        if dpkg --compare-versions "$2" lt 1:1.3.4-2.5ubuntu3.3; then
                 chown root:root /var/lib/nfs
         fi
         chown statd: /var/lib/nfs/sm \

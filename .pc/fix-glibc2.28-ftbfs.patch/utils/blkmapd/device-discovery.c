@@ -49,7 +49,6 @@
 #include <libgen.h>
 #include <errno.h>
 #include <libdevmapper.h>
-#include <sys/sysmacros.h>
 
 #include "device-discovery.h"
 #include "xcommon.h"

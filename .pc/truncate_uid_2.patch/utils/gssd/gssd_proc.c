@@ -460,7 +460,7 @@ change_identity(uid_t uid)
 	 * send a signal to all other threads to synchronize the uid in all
 	 * other threads. To bypass this, we have to call syscall() directly.
 	 */
-#ifdef __NR_setresgid32
+#ifdef __NR_setresuid32
 	res = syscall(SYS_setresgid32, pw->pw_gid, pw->pw_gid, pw->pw_gid);
 #else 
 	res = syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid);

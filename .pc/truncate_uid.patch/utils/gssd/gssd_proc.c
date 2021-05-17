@@ -434,7 +434,6 @@ static int
 change_identity(uid_t uid)
 {
 	struct passwd	*pw;
-	int res;
 
 	/* drop list of supplimentary groups first */
 	if (syscall(SYS_setgroups, 0, 0) != 0) {
@@ -460,23 +459,14 @@ change_identity(uid_t uid)
 	 * send a signal to all other threads to synchronize the uid in all
 	 * other threads. To bypass this, we have to call syscall() directly.
 	 */
-#ifdef __NR_setresgid32
-	res = syscall(SYS_setresgid32, pw->pw_gid, pw->pw_gid, pw->pw_gid);
-#else 
-	res = syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid);
-#endif
-	if (res != 0) {
+	if (syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid) != 0) {
 		printerr(0, "WARNING: failed to set gid to %u!\n", pw->pw_gid);
 		return errno;
 	}
 
-#ifdef __NR_setresuid32
-	res = syscall(SYS_setresuid32, uid, uid, uid);
-#else 
-	res = syscall(SYS_setresuid, uid, uid, uid);
-#endif
-	if (res != 0) {
-		printerr(0, "WARNING: Failed to setuid for user with uid %u\n", uid);
+	if (syscall(SYS_setresuid, uid, uid, uid) != 0) {
+		printerr(0, "WARNING: Failed to setuid for user with uid %u\n",
+				uid);
 		return errno;
 	}
 

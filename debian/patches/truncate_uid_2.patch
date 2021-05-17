@@ -1,0 +1,28 @@
+From 327446213593070733702aaab92045c46452e0c1 Mon Sep 17 00:00:00 2001
+From: Yongcheng Yang <yoyang@redhat.com>
+Date: Sat, 21 Jul 2018 08:25:44 -0400
+Subject: [PATCH] rpc.gssd: fix typo checking "__NR_setresuid32" instead of
+ "__NR_setresgid32
+
+Signed-off-by: Yongcheng Yang <yoyang@redhat.com>
+Signed-off-by: Steve Dickson <steved@redhat.com>
+---
+ utils/gssd/gssd_proc.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/utils/gssd/gssd_proc.c b/utils/gssd/gssd_proc.c
+index 7a57c4e..bfcf3f0 100644
+--- a/utils/gssd/gssd_proc.c
++++ b/utils/gssd/gssd_proc.c
+@@ -460,7 +460,7 @@ change_identity(uid_t uid)
+ 	 * send a signal to all other threads to synchronize the uid in all
+ 	 * other threads. To bypass this, we have to call syscall() directly.
+ 	 */
+-#ifdef __NR_setresuid32
++#ifdef __NR_setresgid32
+ 	res = syscall(SYS_setresgid32, pw->pw_gid, pw->pw_gid, pw->pw_gid);
+ #else 
+ 	res = syscall(SYS_setresgid, pw->pw_gid, pw->pw_gid, pw->pw_gid);
+-- 
+1.8.3.1
+

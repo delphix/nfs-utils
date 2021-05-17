@@ -1,16 +1,8 @@
-Description: Remove whitespaces after '=' in .service file
- Service files should not have spaces surrounding the = key. They are not
- explicitly supported by systemd, and third party tools have been known
- to break.
- .
-Author: Balint Reczey <rbalint@ubuntu.com>
+Subject: Remove extra boggus whitespaces from .service files
+From: Laurent Bigonville <bigon@debian.org>
 
----
-Forwarded: https://bugzilla.linux-nfs.org/show_bug.cgi?id=319
-Last-Update: 2018-01-16
-
---- nfs-utils-1.3.4.orig/systemd/nfs-server.service
-+++ nfs-utils-1.3.4/systemd/nfs-server.service
+--- a/systemd/nfs-server.service
++++ b/systemd/nfs-server.service
 @@ -1,15 +1,15 @@
  [Unit]
  Description=NFS server and services
