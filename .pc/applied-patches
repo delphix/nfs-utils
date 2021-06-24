@@ -18,3 +18,5 @@ uint16-max.diff
 fix-whitespaces-in-nfs-server.service.patch
 nfsiostat-replace-list-reserved-word.patch
 CVE-2019-3689.patch
+0010-gssd-replace-non-thread-safe-strtok-with-strsep.patch
+0011-gssd-Duplicate-the-upcall-string-for-error-messages.patch
