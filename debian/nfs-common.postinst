@@ -43,6 +43,10 @@ case "$1" in
 	if [ -f /lib/init/rw/sendsigs.omit.d/statd ]; then 
 	    mv /lib/init/rw/sendsigs.omit.d/statd /run/sendsigs.omit.d/statd
 	fi
+
+        # always "start" nfs-utils.service, so package upgrades will restart it,
+        # see LP: #1928259
+        systemctl start nfs-utils.service > /dev/null || true
     ;;
 esac
 
