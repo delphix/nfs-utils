@@ -6,6 +6,15 @@ nfs_config=/etc/sysconfig/nfs
 [ -r /etc/default/nfs-common ] && . /etc/default/nfs-common
 [ -r /etc/default/nfs-kernel-server ] && . /etc/default/nfs-kernel-server
 
+#
+# Delphix Engine Override
+# On smaller memory systems (i.e. <= 32G) limit the NFSD thread count
+#
+system_memory=$(awk '/MemTotal/ { printf "%d \n", $2/1024/1024 }' /proc/meminfo)
+if [ "$system_memory" -le 32 ] && [ "${RPCNFSDCOUNT}" > 64 ]; then
+        RPCNFSDCOUNT=64
+fi
+
 mkdir -p /run/sysconfig
 {
 echo PIPEFS_MOUNTPOINT=/run/rpc_pipefs
