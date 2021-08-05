@@ -200,6 +200,18 @@ statd_canonical_name(const char *hostname)
 	ai = get_addrinfo(hostname, &hint);
 	if (ai != NULL) {
 		/* @hostname was a presentation address */
+#if 1
+		/*
+		 * Use the presentation address for the file name.
+		 *
+		 * This is used during SM_MON/SM_UNMON requests to avoid stalls
+		 * from flaky DNS servers when locks are requested from clients
+		 * that have provided an ip address for the mon_name.
+		 */
+		freeaddrinfo(ai);
+		xlog(D_GENERAL, "%s: using IP address %s", __func__, hostname);
+		return strdup(hostname);
+#else
 		_Bool result;
 		result = get_nameinfo(ai->ai_addr, ai->ai_addrlen,
 					buf, (socklen_t)sizeof(buf));
@@ -209,6 +221,7 @@ statd_canonical_name(const char *hostname)
 			 * if no reverse map exists */
 			return strdup(hostname);
 		return strdup(buf);
+#endif
 	}
 
 	/* @hostname was a hostname */
@@ -315,4 +328,50 @@ out:
 			hostname1, hostname2,
 			(result ? "matched" : "did not match"));
 	return result;
+}
+
+/**
+ * statd_matchhostname_pa - check if two hostnames are equivalent
+ * @hostname1: C string containing hostname
+ * @hostname2: C string containing hostname
+ *
+ * If either hostname is a presentation addresss then further
+ * comparisons beyond strcasecmp are not performed.
+ */
+_Bool
+statd_matchhostname_pa(const char *hostname1, const char *hostname2)
+{
+	struct in_addr addr;
+	_Bool matched = false;
+
+	if (strcasecmp(hostname1, hostname2) == 0) {
+		matched = true;
+		goto out;
+	}
+
+	/*
+	 * Stop further matching if either hostname is an IPv4 network address.
+	 *
+	 * This is used during SM_MON/SM_UNMON requests to avoid stalls from
+	 * flaky DNS servers when locks are requested from clients that have
+	 * provided an ip address for the mon_name.
+	 */
+
+	if (inet_pton(AF_INET, hostname1, &addr) == 1) {
+		/* @hostname1 was a presentation address */
+		goto out;
+	}
+	if (inet_pton(AF_INET, hostname2, &addr) == 1) {
+		/* @hostname2 was a presentation address */
+		goto out;
+	}
+
+	/* continue standard matching for non-presentation addresses */
+	matched = statd_matchhostname(hostname1, hostname2);
+
+out:
+	xlog(D_CALL, "%s: hostnames %s and %s %s", __func__,
+			hostname1, hostname2,
+			(matched ? "matched" : "did not match"));
+	return matched;
 }
