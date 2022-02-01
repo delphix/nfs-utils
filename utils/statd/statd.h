@@ -23,6 +23,7 @@
  * Function prototypes.
  */
 extern _Bool	statd_matchhostname(const char *hostname1, const char *hostname2);
+extern _Bool	statd_matchhostname_pa(const char *hostname1, const char *hostname2);
 extern _Bool	statd_present_address(const struct sockaddr *sap, char *buf,
 					const size_t buflen);
 __attribute__((__malloc__))
