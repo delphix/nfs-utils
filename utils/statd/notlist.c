@@ -232,9 +232,18 @@ nlist_gethost(notify_list *list, char *host, int myname)
 	notify_list	*lp;
 
 	for (lp = list; lp; lp = lp->next) {
-		if (statd_matchhostname(host,
-				myname? NL_MY_NAME(lp) : NL_MON_NAME(lp)))
-			return lp;
+		if (!myname) {
+			/*
+			 * Use a matching function that doesn't perform reverse
+			 * lookups for ip addresses.
+			 */
+			if (statd_matchhostname_pa(host, NL_MON_NAME(lp)))
+				return lp;
+		} else {
+			if (statd_matchhostname(host, myname? NL_MY_NAME(lp) :
+					NL_MON_NAME(lp)))
+				return lp;
+		}
 	}
 
 	return (notify_list *) NULL;
