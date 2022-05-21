@@ -141,6 +141,14 @@ options.
 .TP
 .B -s
 Display the current export list suitable for /etc/exports.
+.TP
+.B -F <path>
+Flush a specific export from the NFSD caches.
+.TP
+.B -N
+Do not flush the NFSD caches when adding/removing exports. A follow on
+.BR "exportfs -F <path>"
+is used to flush a specific entry.
 .SH DISCUSSION
 .SS Exporting Directories
 The first synopsis shows how to invoke

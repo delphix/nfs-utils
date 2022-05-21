@@ -156,6 +156,7 @@ struct nfs_fh_len *	getfh_size(const struct sockaddr_in *sin,
 int qword_get(char **bpp, char *dest, int bufsize);
 int qword_get_int(char **bpp, int *anint);
 void cache_flush(int force);
+void cache_flush_entry(const char *entry);
 int check_new_cache(void);
 void qword_add(char **bpp, int *lp, char *str);
 void qword_addhex(char **bpp, int *lp, char *buf, int blen);
