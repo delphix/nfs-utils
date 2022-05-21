@@ -87,6 +87,7 @@ main(int argc, char **argv)
 {
 	char	*options = NULL;
 	char	*progname = NULL;
+	char	*entry = NULL;
 	int	f_export = 1;
 	int	f_all = 0;
 	int	f_verbose = 0;
@@ -96,6 +97,8 @@ main(int argc, char **argv)
 	int	i, c;
 	int	new_cache = 0;
 	int	force_flush = 0;
+	int	no_cache_flush = 0;
+	int	flush_one_entry = 0;
 
 	if ((progname = strrchr(argv[0], '/')) != NULL)
 		progname++;
@@ -106,7 +109,7 @@ main(int argc, char **argv)
 	xlog_stderr(1);
 	xlog_syslog(0);
 
-	while ((c = getopt(argc, argv, "ad:fhio:ruvs")) != EOF) {
+	while ((c = getopt(argc, argv, "ad:fF:hiNo:ruvs")) != EOF) {
 		switch(c) {
 		case 'a':
 			f_all = 1;
@@ -117,11 +120,25 @@ main(int argc, char **argv)
 		case 'f':
 			force_flush = 1;
 			break;
+		case 'F':
+			/* Used by libshare to flush a specific mount entry */
+			entry = optarg;
+			flush_one_entry = 1;
+			break;
 		case 'h':
+			if (f_verbose) {
+				/* Used by libshare to confirm supported args */
+				fprintf(stdout, "supports: %s\n",
+					"no_cache_flush,flush_one_entry");
+			}
 			usage(progname, 0);
 			break;
 		case 'i':
 			f_ignore = 1;
+			break;
+		case 'N':
+			/* Used by libshare to suppress the NFS cache purge */
+			no_cache_flush = 1;
 			break;
 		case 'o':
 			options = optarg;
@@ -168,6 +185,9 @@ main(int argc, char **argv)
 					"Mount /proc/fs/nfsd first");
 				return 1;
 			}
+			return 0;
+		} else if (flush_one_entry) {
+			cache_flush_entry(entry);
 			return 0;
 		} else {
 			xtab_export_read();
@@ -217,7 +237,7 @@ main(int argc, char **argv)
 		exports_update(f_verbose);
 	}
 	xtab_export_write();
-	if (new_cache)
+	if (new_cache && !no_cache_flush)
 		cache_flush(force_flush);
 	if (!new_cache)
 		xtab_mount_write();
@@ -822,6 +842,6 @@ error(nfs_export *exp, int err)
 static void
 usage(const char *progname, int n)
 {
-	fprintf(stderr, "usage: %s [-adfhioruvs] [host:/path]\n", progname);
+	fprintf(stderr, "usage: %s [-adfFhiNoruvs] [host:/path]\n", progname);
 	exit(n);
 }

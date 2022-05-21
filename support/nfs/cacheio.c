@@ -23,6 +23,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
+#include <sys/mount.h>
 #include <fcntl.h>
 #include <time.h>
 #include <errno.h>
@@ -257,4 +259,155 @@ cache_flush(int force)
 			close(fd);
 		}
 	}
+}
+
+/*
+ * Update the expiration of an existing entry in cache so that it gets evicted.
+ * cache is either 'nfsd.fh' or 'nfsd.export'
+ */
+static void
+cache_update_entry(const char *cache, const char *message)
+{
+	char path[MAXPATHLEN];
+	int fd;
+	ssize_t mesg_len = (ssize_t)strlen(message);
+
+	snprintf(path, sizeof(path), "/proc/net/rpc/%s/channel", cache);
+	fd = open(path, O_RDWR);
+	if (fd >= 0) {
+		if (write(fd, message, mesg_len) != mesg_len) {
+			xlog_warn("Writing '%s' to '%s' failed: errno %d (%s)",
+			message, path, errno, strerror(errno));
+		}
+		close(fd);
+	}
+}
+
+/*
+ * Check if there is an entry in cache for mountpoint.
+ * cache is either 'nfsd.fh' or 'nfsd.export'
+ */
+static bool
+cache_has_entry(const char *cache, const char *mountpoint)
+{
+	char path[MAXPATHLEN];
+	bool found = false;
+	FILE *fp;
+
+	snprintf(path, sizeof(path), "/proc/net/rpc/%s/content", cache);
+	fp = fopen(path, "r");
+	if (fp != NULL) {
+		char *linebuf = NULL;
+		size_t linelen = 0;
+
+		while(getline(&linebuf, &linelen, fp) != -1) {
+			if (linebuf[0] == '#')
+				continue;
+			if (strstr(linebuf, mountpoint) != NULL) {
+				found = true;
+				break;
+			}
+		}
+		free(linebuf);
+		(void) fclose(fp);
+	}
+
+	return found;
+}
+
+#define MILLISEC        1000
+#define NANOSEC         1000000000
+#define NSEC2MSEC(n)    ((n) / (NANOSEC / MILLISEC))
+
+static uint64_t
+gethrtime(void)
+{
+	struct timespec ts;
+	(void) clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ((((uint64_t)ts.tv_sec) * NANOSEC) + ts.tv_nsec);
+}
+
+/*
+ * Check if mount is busy without causing an actual unmount.
+ */
+static bool
+can_umount(const char *path)
+{
+	struct statfs64 stfs;
+	int error = 0;
+
+	/*
+	 * We leverage the umount2 MNT_EXPIRE mechanism to let us know if
+	 * a mount is busy without causing an actual unmount.  With the
+	 * MNT_EXPIRE flag we will get back EBUSY or EAGAIN (mount is not
+	 * busy) but not cause an actual unmount.
+	 *
+	 * After checking the result we make a statfs call to clear the
+	 * MNT_EXPIRE state (i.e. the mnt_expiry_mark).
+	 */
+	if (umount2(path, MNT_EXPIRE) == -1)
+		error = errno;
+
+	/*
+	 * Undo the mount point expired state by taking a temporary reference.
+	 *
+	 * NOTE -- another exportfs -F <path> could theoretically race us here
+	 * but that only means that the other instance could have unmounted the
+	 * path. Regardless, cache_flush_entry() can still proceed.
+	 */
+	(void) statfs64(path, &stfs);
+
+	return (error != EBUSY);
+}
+
+/*
+ * Flush the NFSD 'nfsd.fh' and 'nfsd.export' cache entries for exported path
+ *
+ * Used by ZFS libshare to flush a specific export.
+ */
+void
+cache_flush_entry(const char *path)
+{
+	struct statfs64 stfs;
+	char fsid_val[36];
+	char message[200];
+	int expiry;
+	int rc;
+
+	/* Note - sunrpc cache_clean() will expire if less than now */
+	expiry = time(0) - 10;
+
+	if (cache_has_entry("nfsd.fh", path)) {
+		/* Obtain the FSID for the 'nfsd.fh' message */
+		rc = statfs64(path, &stfs);
+		if (rc != 0) {
+			xlog(L_FATAL, "Cannot obtain the FSID for '%s' - %s",
+			    path, strerror(errno));
+		}
+		snprintf(fsid_val, sizeof(fsid_val), "%08x%08x0000000000000000",
+		    stfs.f_fsid.__val[0], stfs.f_fsid.__val[1]);
+
+		/* message format: <client> <fsidtype> <fsid> <expiry> <path> */
+		snprintf(message, sizeof(message),
+		    "* 6 \\x%s %d %s\n", fsid_val, expiry, path);
+
+		cache_update_entry("nfsd.fh", message);
+	}
+
+	if (cache_has_entry("nfsd.export", path)) {
+		/* message format: <client> <path> <expiry> */
+		snprintf(message, sizeof(message), "* %s %d\n", path, expiry);
+		cache_update_entry("nfsd.export", message);
+	}
+
+	/*
+	 * Wait here (up to 10 seconds) for nfsd_filecache_laundrette thread
+	 * to flush entries holding a reference on this mount.
+	 */
+	uint64_t start = gethrtime();
+	do {
+		if (can_umount(path))
+			break;
+		usleep(100 * MILLISEC);
+	} while (NSEC2MSEC(gethrtime() - start) < (10 * MILLISEC));
 }
