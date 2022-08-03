@@ -22,6 +22,17 @@ is_mountpoint(char *path)
 	struct stat stb, pstb;
 	int rv;
 
+	/*
+	 * Delphix appliance exports are always an active mountpoint, except
+	 * for appdata, so for those paths we can avoid the excessive double
+	 * lstat() calls used here to determine mountpoint status.
+	 */
+	if ((strncmp(path, "/domain0/", 9) == 0 &&
+	    strstr(path, "appdata_timeflow") == NULL) ||
+	    strncmp(path, "/dcenter/", 9) == 0) {
+		return 1;
+	}
+
 	dotdot = xmalloc(strlen(path)+4);
 
 	strcat(strcpy(dotdot, path), "/..");

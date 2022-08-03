@@ -97,6 +97,8 @@ struct exportent {
 	char *		e_uuid;
 	struct sec_entry e_secinfo[SECFLAVOR_COUNT+1];
 	unsigned int	e_ttl;
+	/* cache the fsid to avoid excessive statfs calls */
+	char		e_fsid_value[17];
 };
 
 struct rmtabent {
