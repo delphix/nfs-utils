@@ -48,6 +48,7 @@ static nfs_export pseudo_root = {
 		.e_fsid = 0,
 		.e_mountpoint = NULL,
 		.e_ttl = DEFAULT_TTL,
+		.e_fsid_value = "",
 	},
 	.m_exported = 0,
 	.m_xtabent = 1,
