@@ -25,6 +25,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <mntent.h>
+#include <pthread.h>
 #include "misc.h"
 #include "nfslib.h"
 #include "exportfs.h"
@@ -299,7 +300,10 @@ static const long int nonblkid_filesystems[] = {
     0        /* last */
 };
 
-static int uuid_by_path(char *path, int type, size_t uuidlen, char *uuid)
+pthread_mutex_t exp_fsid_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int uuid_by_path(char *path, struct exportent *exp, int type,
+    size_t uuidlen, char *uuid)
 {
 	/* get a uuid for the filesystem found at 'path'.
 	 * There are several possible ways of generating the
@@ -334,6 +338,17 @@ static int uuid_by_path(char *path, int type, size_t uuidlen, char *uuid)
 	const char *val;
 	int rc;
 
+	/* Delphix -- Use cached fsid value if available */
+	if (type == 0) {
+		pthread_mutex_lock(&exp_fsid_lock);
+		if (exp->e_fsid_value[0] != '\0') {
+			get_uuid(exp->e_fsid_value, uuidlen, uuid);
+			pthread_mutex_unlock(&exp_fsid_lock);
+			return 1;
+		}
+		pthread_mutex_unlock(&exp_fsid_lock);
+	}
+
 	rc = statfs64(path, &st);
 
 	if (type == 0 && rc == 0) {
@@ -353,12 +368,19 @@ static int uuid_by_path(char *path, int type, size_t uuidlen, char *uuid)
 	else
 		fsid_val[0] = 0;
 
-	if (blkid_val && (type--) == 0)
+	if (blkid_val && (type--) == 0) {
 		val = blkid_val;
-	else if (fsid_val[0] && (type--) == 0)
+	} else if (fsid_val[0] && (type--) == 0) {
 		val = fsid_val;
-	else
+
+		/* Delphix -- cache the value to avoid statfs64 storm later */
+		pthread_mutex_lock(&exp_fsid_lock);
+		(void) strncpy(exp->e_fsid_value, fsid_val, MIN(sizeof(fsid_val),
+		    sizeof(exp->e_fsid_value)));
+		pthread_mutex_unlock(&exp_fsid_lock);
+	} else {
 		return 0;
+	}
 
 	get_uuid(val, uuidlen, uuid);
 	return 1;
@@ -609,10 +631,13 @@ static bool match_fsid(struct parsed_fsid *parsed, nfs_export *exp, char *path)
 	int type;
 	char u[16];
 
-	if (stat(path, &stb) != 0)
-		return false;
-	if (!S_ISDIR(stb.st_mode) && !S_ISREG(stb.st_mode))
-		return false;
+	/* Delphix -- avoid unused stat calls */
+	if (parsed->fsidtype != FSID_NUM && parsed->fsidtype != FSID_UUID16) {
+		if (stat(path, &stb) != 0)
+			return false;
+		if (!S_ISDIR(stb.st_mode) && !S_ISREG(stb.st_mode))
+			return false;
+	}
 
 	switch (parsed->fsidtype) {
 	case FSID_DEV:
@@ -639,17 +664,18 @@ static bool match_fsid(struct parsed_fsid *parsed, nfs_export *exp, char *path)
 		if (!is_mountpoint(path))
 			return false;
 	check_uuid:
+		/* user supplied UUID */
 		if (exp->m_export.e_uuid) {
 			get_uuid(exp->m_export.e_uuid, parsed->uuidlen, u);
 			if (memcmp(u, parsed->fhuuid, parsed->uuidlen) == 0)
 				return true;
-		}
-		else
+		} else { /* derive uuid from path */
 			for (type = 0;
-			     uuid_by_path(path, type, parsed->uuidlen, u);
+			     uuid_by_path(path, &exp->m_export, type, parsed->uuidlen, u);
 			     type++)
 				if (memcmp(u, parsed->fhuuid, parsed->uuidlen) == 0)
 					return true;
+		}
 	}
 	/* Well, unreachable, actually: */
 	return false;
@@ -912,7 +938,7 @@ static int dump_to_cache(int f, char *buf, int buflen, char *domain,
 		write_secinfo(&bp, &blen, exp, flag_mask);
 		if (exp->e_uuid == NULL || different_fs) {
 			char u[16];
-			if (uuid_by_path(path, 0, 16, u)) {
+			if (uuid_by_path(path, exp, 0, 16, u)) {
 				qword_add(&bp, &blen, "uuid");
 				qword_addhex(&bp, &blen, u, 16);
 			}
