@@ -285,8 +285,10 @@ static int get_uuid(const char *val, size_t uuidlen, char *u)
  * we generate the identifier from statfs->f_fsid. The rest are network or
  * pseudo filesystems. (See <linux/magic.h> for the basic IDs.)
  */
+#define	ZFS_SUPER_MAGIC	0x2fc12fc1
+
 static const long int nonblkid_filesystems[] = {
-    0x2fc12fc1,    /* ZFS_SUPER_MAGIC */
+    ZFS_SUPER_MAGIC,    /* ZFS_SUPER_MAGIC */
     0x9123683E,    /* BTRFS_SUPER_MAGIC */
     0xFF534D42,    /* CIFS_MAGIC_NUMBER */
     0x1373,        /* DEVFS_SUPER_MAGIC */
@@ -302,6 +304,9 @@ static const long int nonblkid_filesystems[] = {
 
 pthread_mutex_t exp_fsid_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/*
+ * Will be called for every NFS export. So avoid statfs calls when possible.
+ */
 static int uuid_by_path(char *path, struct exportent *exp, int type,
     size_t uuidlen, char *uuid)
 {
@@ -337,6 +342,10 @@ static int uuid_by_path(char *path, struct exportent *exp, int type,
 	const char *blkid_val = NULL;
 	const char *val;
 	int rc;
+
+	/* fast path for zfs and type 1 to avoid throw-away statfs call */
+	if (type > 0 && st.f_type == ZFS_SUPER_MAGIC)
+		return 0;
 
 	/* Delphix -- Use cached fsid value if available */
 	if (type == 0) {
