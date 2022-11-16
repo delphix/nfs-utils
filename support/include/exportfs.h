@@ -171,6 +171,8 @@ struct addrinfo *		host_numeric_addrinfo(const struct sockaddr *sap);
 
 int				rmtab_read(void);
 
+void				rmtab_rebuild(void);
+
 struct nfskey *			key_lookup(char *hname);
 
 struct export_features {

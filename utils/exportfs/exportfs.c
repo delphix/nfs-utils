@@ -96,6 +96,7 @@ main(int argc, char **argv)
 	int	i, c;
 	int	new_cache = 0;
 	int	force_flush = 0;
+	struct	timespec rmtab_mtim = {0};
 
 	if ((progname = strrchr(argv[0], '/')) != NULL)
 		progname++;
@@ -182,6 +183,14 @@ main(int argc, char **argv)
 	grab_lockfile();
 	atexit(release_lockfile);
 
+	/* track if etab file is changed */
+	if (f_all && f_reexport) {
+		struct	stat stb;
+
+		if (stat(_PATH_ETAB, &stb) == 0)
+			rmtab_mtim = stb.st_mtim;
+	}
+
 	if (f_export && ! f_ignore) {
 		if (! (export_read(_PATH_EXPORTS) +
 		       export_d_read(_PATH_EXPORTS_D))) {
@@ -221,6 +230,19 @@ main(int argc, char **argv)
 		cache_flush(force_flush);
 	if (!new_cache)
 		xtab_mount_write();
+
+	if (f_all && f_reexport) {
+		struct	stat stb;
+
+		/* If etab file was updated, reconcile the entries in rmtab file
+		 * which will remove stale entries.
+		 */
+		if (stat(_PATH_ETAB, &stb) == 0 &&
+		    (rmtab_mtim.tv_sec != stb.st_mtim.tv_sec ||
+		    rmtab_mtim.tv_nsec != stb.st_mtim.tv_nsec)) {
+			rmtab_rebuild();
+		}
+	}
 
 	return export_errno;
 }
