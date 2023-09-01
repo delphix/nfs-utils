@@ -300,21 +300,13 @@ static int nfs_verify_lock_option(struct mount_options *options)
 	return 1;
 }
 
-static int nfs_insert_sloppy_option(struct mount_options *options)
+static int nfs_append_sloppy_option(struct mount_options *options)
 {
-	if (linux_version_code() < MAKE_VERSION(2, 6, 27))
+	if (!sloppy || linux_version_code() < MAKE_VERSION(2, 6, 27))
 		return 1;
 
-	if (po_contains(options, "sloppy")) {
-		po_remove_all(options, "sloppy");
-		sloppy++;
-	}
-
-	if (sloppy) {
-		if (po_insert(options, "sloppy") == PO_FAILED)
-			return 0;
-	}
-
+	if (po_append(options, "sloppy") == PO_FAILED)
+		return 0;
 	return 1;
 }
 
@@ -397,7 +389,7 @@ static int nfs_validate_options(struct nfsmount_info *mi)
 	if (!nfs_set_version(mi))
 		return 0;
 
-	if (!nfs_insert_sloppy_option(mi->options))
+	if (!nfs_append_sloppy_option(mi->options))
 		return 0;
 
 	return 1;

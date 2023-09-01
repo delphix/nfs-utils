@@ -1,0 +1,108 @@
+commit 92b664ef4f25f1bd920bea4db435345629543353
+Author: Jianhong Yin <yin-jianhong@163.com>
+Date: Thu, 10 Jun 2021 13:27:29 -0400
+Subject: mount.nfs: insert 'sloppy' at beginning of the options
+ Previously, the 'sloppy' option was appended to other options
+ so that when kernel parses the options sequentially, the
+ 'sloppy' option will not work if there's a invalid option in
+ front of it.
+ 
+ use 'po_insert' instead 'po_append'
+ 
+ Signed-off-by: Jianhong Yin <yin-jianhong@163.com>
+ Signed-off-by: Steve Dickson <steved@redhat.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/2025302
+Origin: upstream, https://git.linux-nfs.org/?p=steved/nfs-utils.git;a=patch;h=92b664ef4f25f1bd920bea4db435345629543353
+Last-Update: 2023-06-29
+
+Index: nfs-utils-1.3.4/utils/mount/parse_opt.c
+===================================================================
+--- nfs-utils-1.3.4.orig/utils/mount/parse_opt.c	2023-06-29 12:14:08.241886965 +1200
++++ nfs-utils-1.3.4/utils/mount/parse_opt.c	2023-06-29 12:14:08.237886915 +1200
+@@ -178,6 +178,22 @@
+ 	options->count++;
+ }
+ 
++static void options_head_insert(struct mount_options *options,
++				struct mount_option *option)
++{
++	struct mount_option *ohead = options->head;
++
++	option->prev = NULL;
++	option->next = ohead;
++	if (ohead)
++		ohead->prev = option;
++	else
++		options->tail = option;
++	options->head = option;
++
++	options->count++;
++}
++
+ static void options_delete(struct mount_options *options,
+ 			   struct mount_option *option)
+ {
+@@ -374,6 +390,23 @@
+ }
+ 
+ /**
++ * po_insert - insert an option into a group of options
++ * @options: pointer to mount options
++ * @option: pointer to a C string containing the option to add
++ *
++ */
++po_return_t po_insert(struct mount_options *options, char *str)
++{
++	struct mount_option *option = option_create(str);
++
++	if (option) {
++		options_head_insert(options, option);
++		return PO_SUCCEEDED;
++	}
++	return PO_FAILED;
++}
++
++/**
+  * po_append - concatenate an option onto a group of options
+  * @options: pointer to mount options
+  * @option: pointer to a C string containing the option to add
+Index: nfs-utils-1.3.4/utils/mount/parse_opt.h
+===================================================================
+--- nfs-utils-1.3.4.orig/utils/mount/parse_opt.h	2023-06-29 12:14:08.241886965 +1200
++++ nfs-utils-1.3.4/utils/mount/parse_opt.h	2023-06-29 12:14:08.237886915 +1200
+@@ -43,6 +43,7 @@
+ 				   struct mount_options *);
+ po_return_t		po_join(struct mount_options *, char **);
+ 
++po_return_t		po_insert(struct mount_options *, char *);
+ po_return_t		po_append(struct mount_options *, char *);
+ po_found_t		po_contains(struct mount_options *, char *);
+ po_found_t		po_contains_prefix(struct mount_options *options,
+Index: nfs-utils-1.3.4/utils/mount/stropts.c
+===================================================================
+--- nfs-utils-1.3.4.orig/utils/mount/stropts.c	2023-06-29 12:14:08.241886965 +1200
++++ nfs-utils-1.3.4/utils/mount/stropts.c	2023-06-29 12:14:08.241886965 +1200
+@@ -300,12 +300,12 @@
+ 	return 1;
+ }
+ 
+-static int nfs_append_sloppy_option(struct mount_options *options)
++static int nfs_insert_sloppy_option(struct mount_options *options)
+ {
+ 	if (!sloppy || linux_version_code() < MAKE_VERSION(2, 6, 27))
+ 		return 1;
+ 
+-	if (po_append(options, "sloppy") == PO_FAILED)
++	if (po_insert(options, "sloppy") == PO_FAILED)
+ 		return 0;
+ 	return 1;
+ }
+@@ -389,7 +389,7 @@
+ 	if (!nfs_set_version(mi))
+ 		return 0;
+ 
+-	if (!nfs_append_sloppy_option(mi->options))
++	if (!nfs_insert_sloppy_option(mi->options))
+ 		return 0;
+ 
+ 	return 1;

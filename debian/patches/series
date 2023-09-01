@@ -26,3 +26,5 @@ fix-start-ordering-1.patch
 fix-start-ordering-2.patch
 fix-start-ordering-3.patch
 CVE-2019-3689.patch
+lp-2025302-1-mount.nfs-insert-sloppy-at-beginning-of-the-options.patch
+lp-2025302-2-mount.nfs-Fix-the-sloppy-option-processing.patch

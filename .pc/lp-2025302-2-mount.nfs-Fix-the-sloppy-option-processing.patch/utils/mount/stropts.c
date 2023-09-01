@@ -302,19 +302,11 @@ static int nfs_verify_lock_option(struct mount_options *options)
 
 static int nfs_insert_sloppy_option(struct mount_options *options)
 {
-	if (linux_version_code() < MAKE_VERSION(2, 6, 27))
+	if (!sloppy || linux_version_code() < MAKE_VERSION(2, 6, 27))
 		return 1;
 
-	if (po_contains(options, "sloppy")) {
-		po_remove_all(options, "sloppy");
-		sloppy++;
-	}
-
-	if (sloppy) {
-		if (po_insert(options, "sloppy") == PO_FAILED)
-			return 0;
-	}
-
+	if (po_insert(options, "sloppy") == PO_FAILED)
+		return 0;
 	return 1;
 }
 

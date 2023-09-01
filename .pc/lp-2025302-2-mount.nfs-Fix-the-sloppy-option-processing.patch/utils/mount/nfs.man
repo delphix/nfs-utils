@@ -512,13 +512,6 @@ using the FS-Cache facility. See cachefilesd(8)
 and <kernel_soruce>/Documentation/filesystems/caching
 for detail on how to configure the FS-Cache facility.
 Default value is nofsc.
-.TP 1.5i
-.B sloppy
-The
-.B sloppy
-option is an alternative to specifying
-.BR mount.nfs " -s " option.
-
 .SS "Options for NFS versions 2 and 3 only"
 Use these options, along with the options in the above subsection,
 for NFS versions 2 and 3 only.
