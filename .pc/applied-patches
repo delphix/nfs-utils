@@ -28,3 +28,6 @@ fix-start-ordering-3.patch
 CVE-2019-3689.patch
 lp-2025302-1-mount.nfs-insert-sloppy-at-beginning-of-the-options.patch
 lp-2025302-2-mount.nfs-Fix-the-sloppy-option-processing.patch
+lp-2049262-1-mount.nfs-improve-version-negotiation-when-vers-4-i.patch
+lp-2049262-2-mount.nfs-Use-default-minor-version-when-t-nfs4-is.patch
+lp-2049262-3-mount.nfs-Use-default-minor-version-when-o-v4-is-sp.patch

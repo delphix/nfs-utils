@@ -73,13 +73,6 @@
 #define NFS_DEF_BG_TIMEOUT_MINUTES	(10000u)
 #endif
 
-#ifndef NFS_DEFAULT_MAJOR
-#define NFS_DEFAULT_MAJOR	4
-#endif
-#ifndef NFS_DEFAULT_MINOR
-#define NFS_DEFAULT_MINOR	2
-#endif
-
 extern int nfs_mount_data_version;
 extern char *progname;
 extern int verbose;
@@ -119,28 +112,20 @@ static void nfs_default_version(struct nfsmount_info *mi)
 	if (mi->version.v_mode == V_DEFAULT &&
 		config_default_vers.v_mode != V_DEFAULT) {
 		mi->version.major = config_default_vers.major;
-		if (config_default_vers.v_mode == V_SPECIFIC)
-			mi->version.minor = config_default_vers.minor;
-		else
-			mi->version.minor = NFS_DEFAULT_MINOR;
+		mi->version.minor = config_default_vers.minor;
 		return;
 	}
 
 	if (mi->version.v_mode == V_GENERAL) {
 		if (config_default_vers.v_mode != V_DEFAULT &&
-		    mi->version.major == config_default_vers.major) {
-			if (config_default_vers.v_mode == V_SPECIFIC)
-				mi->version.minor = config_default_vers.minor;
-			else
-				mi->version.minor = NFS_DEFAULT_MINOR;
-		} else
-			mi->version.minor = NFS_DEFAULT_MINOR;
+		    mi->version.major == config_default_vers.major)
+			mi->version.minor = config_default_vers.minor;
 		return;
 	}
 
 #endif /* MOUNT_CONFIG */
-	mi->version.major = NFS_DEFAULT_MAJOR;
-	mi->version.minor = NFS_DEFAULT_MINOR;
+	mi->version.major = 4;
+	mi->version.minor = 2;
 }
 
 /*
@@ -338,12 +323,9 @@ static int nfs_set_version(struct nfsmount_info *mi)
 	if (!nfs_nfs_version(mi->options, &mi->version))
 		return 0;
 
-	if (strncmp(mi->type, "nfs4", 4) == 0) {
-		/* Set to default values */
-		mi->version.major = NFS_DEFAULT_MAJOR;
-		mi->version.minor = NFS_DEFAULT_MINOR;
-		mi->version.v_mode = V_GENERAL;
-	}
+	if (strncmp(mi->type, "nfs4", 4) == 0)
+		mi->version.major = 4;
+
 	/*
 	 * Before 2.6.32, the kernel NFS client didn't
 	 * support "-t nfs vers=4" mounts, so NFS version
@@ -753,9 +735,13 @@ static int nfs_do_mount_v4(struct nfsmount_info *mi,
 	}
 
 	if (mi->version.v_mode != V_SPECIFIC) {
-		snprintf(version_opt, sizeof(version_opt) - 1,
-			"vers=%lu.%lu", mi->version.major,
-			mi->version.minor);
+		if (mi->version.v_mode == V_GENERAL)
+			snprintf(version_opt, sizeof(version_opt) - 1,
+				"vers=%lu", mi->version.major);
+		else
+			snprintf(version_opt, sizeof(version_opt) - 1,
+				"vers=%lu.%lu", mi->version.major,
+				mi->version.minor);
 
 		if (po_append(options, version_opt) == PO_FAILED) {
 			errno = EINVAL;
@@ -856,6 +842,9 @@ check_result:
 	case EINVAL:
 		/* A less clear indication that our client
 		 * does not support NFSv4 minor version. */
+		if (mi->version.v_mode == V_GENERAL &&
+			mi->version.minor == 0)
+				return result;
 		if (mi->version.v_mode != V_SPECIFIC) {
 			if (mi->version.minor > 0) {
 				mi->version.minor--;
@@ -877,9 +866,6 @@ check_result:
 		/* UDP-Only servers won't support v4, but maybe it
 		 * just isn't ready yet.  So try v3, but double-check
 		 * with rpcbind for v4. */
-		if (mi->version.v_mode == V_GENERAL)
-			/* Mustn't try v2,v3 */
-			return result;
 		result = nfs_try_mount_v3v2(mi, TRUE);
 		if (result == 0 && errno == EAGAIN) {
 			/* v4 server seems to be registered now. */
@@ -893,9 +879,6 @@ check_result:
 	}
 
 fall_back:
-	if (mi->version.v_mode == V_GENERAL)
-		/* v2,3 fallback not allowed */
-		return result;
 	return nfs_try_mount_v3v2(mi, FALSE);
 }
 
