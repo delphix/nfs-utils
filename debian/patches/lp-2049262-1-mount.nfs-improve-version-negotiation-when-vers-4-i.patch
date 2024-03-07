@@ -1,0 +1,77 @@
+commit d406648690fa0fdf5333d7d54cf8210dab7f4d9c
+From: NeilBrown <neilb@suse.com>
+Date: Thu, 1 Jun 2017 09:42:16 -0400
+Subject: mount.nfs: improve version negotiation when vers=4 is specified.
+ If NFSv4, in general, is requested (possibly by -t nfs4 or -o v4 or -o
+ vers=4 etc) then we need to negotiate the best minor version, but must
+ not fallback to v3 or v2.  Internally, this state is reflected in v_mode
+ == V_GENERAL.  This means that a major version was given, but the minor
+ version still needs to be negotiated.
+ 
+ This is handled by nfs_autonegotiate(). It currently does the right
+ thing for EPROTONOSUPPORT and EINVAL, but not for other errors.
+ In particular, ENOENT can cause problems as  NFSv4 might export
+ a different namespace than NFSv3 (e.g. by using fsid=0 in the Linux
+ NFS server).  Currently a mount request for NFSv4 and a particular path
+ can result if an NFSv3 mount if the path is available with v3 but
+ not v4.
+ 
+ So move the special handling of V_GENERAL into the common fall_back:
+ code, and add extra checking in the ENCONNREFUSED case, which does
+ not use fall_back:.
+ 
+ Tested-by: Steve Dickson <steved@redhat.com>
+ Signed-off-by: NeilBrown <neilb@suse.com>
+ Signed-off-by: Steve Dickson <steved@redhat.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/2049262
+Bug: https://lore.kernel.org/all/87lgpceeuo.fsf@notabene.neil.brown.name/
+Origin: upstream, https://git.linux-nfs.org/?p=steved/nfs-utils.git;a=commitdiff;h=d406648690fa0fdf5333d7d54cf8210dab7f4d9c
+Last-Update: 2024-01-18
+
+Index: nfs-utils-1.3.4/utils/mount/stropts.c
+===================================================================
+--- nfs-utils-1.3.4.orig/utils/mount/stropts.c	2024-01-18 22:27:17.920114992 +1300
++++ nfs-utils-1.3.4/utils/mount/stropts.c	2024-01-18 22:27:17.916114933 +1300
+@@ -323,9 +323,10 @@
+ 	if (!nfs_nfs_version(mi->options, &mi->version))
+ 		return 0;
+ 
+-	if (strncmp(mi->type, "nfs4", 4) == 0)
++	if (strncmp(mi->type, "nfs4", 4) == 0) {
+ 		mi->version.major = 4;
+-
++		mi->version.v_mode = V_GENERAL;
++	}
+ 	/*
+ 	 * Before 2.6.32, the kernel NFS client didn't
+ 	 * support "-t nfs vers=4" mounts, so NFS version
+@@ -842,9 +843,6 @@
+ 	case EINVAL:
+ 		/* A less clear indication that our client
+ 		 * does not support NFSv4 minor version. */
+-		if (mi->version.v_mode == V_GENERAL &&
+-			mi->version.minor == 0)
+-				return result;
+ 		if (mi->version.v_mode != V_SPECIFIC) {
+ 			if (mi->version.minor > 0) {
+ 				mi->version.minor--;
+@@ -866,6 +864,9 @@
+ 		/* UDP-Only servers won't support v4, but maybe it
+ 		 * just isn't ready yet.  So try v3, but double-check
+ 		 * with rpcbind for v4. */
++		if (mi->version.v_mode == V_GENERAL)
++			/* Mustn't try v2,v3 */
++			return result;
+ 		result = nfs_try_mount_v3v2(mi, TRUE);
+ 		if (result == 0 && errno == EAGAIN) {
+ 			/* v4 server seems to be registered now. */
+@@ -879,6 +880,9 @@
+ 	}
+ 
+ fall_back:
++	if (mi->version.v_mode == V_GENERAL)
++		/* v2,3 fallback not allowed */
++		return result;
+ 	return nfs_try_mount_v3v2(mi, FALSE);
+ }
+ 
