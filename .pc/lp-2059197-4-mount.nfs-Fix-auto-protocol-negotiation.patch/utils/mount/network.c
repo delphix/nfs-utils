@@ -1266,8 +1266,8 @@ nfs_nfs_version(char *type, struct mount_options *options, struct nfs_version *v
 		}
 	}
 
-	if (!found && strcmp(type, "nfs4") == 0)
-		version_val = type + 3;
+	if (!found && strncmp(type, "nfs", 3) == 0)
+		version_val = "4";
 	else if (!found)
 		return 1;
 	else if (i <= 2 ) {

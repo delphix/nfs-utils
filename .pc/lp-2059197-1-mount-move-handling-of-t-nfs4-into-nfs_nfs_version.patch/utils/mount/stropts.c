@@ -87,8 +87,8 @@ extern int sloppy;
 
 struct nfsmount_info {
 	const char		*spec,		/* server:/path */
-				*node;		/* mounted-on dir */
-	char			*type;		/* "nfs" or "nfs4" */
+				*node,		/* mounted-on dir */
+				*type;		/* "nfs" or "nfs4" */
 	char			*hostname;	/* server's hostname */
 	struct addrinfo		*address;	/* server's addresses */
 	sa_family_t		family;		/* Address family */
@@ -335,9 +335,15 @@ static int nfs_insert_sloppy_option(struct mount_options *options)
 
 static int nfs_set_version(struct nfsmount_info *mi)
 {
-	if (!nfs_nfs_version(mi->type, mi->options, &mi->version))
+	if (!nfs_nfs_version(mi->options, &mi->version))
 		return 0;
 
+	if (strncmp(mi->type, "nfs4", 4) == 0) {
+		/* Set to default values */
+		mi->version.major = NFS_DEFAULT_MAJOR;
+		mi->version.minor = NFS_DEFAULT_MINOR;
+		mi->version.v_mode = V_GENERAL;
+	}
 	/*
 	 * Before 2.6.32, the kernel NFS client didn't
 	 * support "-t nfs vers=4" mounts, so NFS version
@@ -755,21 +761,6 @@ static int nfs_do_mount_v4(struct nfsmount_info *mi,
 			errno = EINVAL;
 			goto out_fail;
 		}
-	} else if (po_get(options, "minorversion") &&
-		linux_version_code() > MAKE_VERSION(3, 4, 0)) {
-		/*
-	 	 * convert minorversion= into vers=4.x
-	 	 */
-		po_remove_all(options, "minorversion");
-
-		snprintf(version_opt, sizeof(version_opt) - 1,
-			"vers=%lu.%lu", mi->version.major,
-			mi->version.minor);
-
-		if (po_append(options, version_opt) == PO_FAILED) {
-			errno = EINVAL;
-			goto out_fail;
-		}
 	}
 
 	if (!nfs_append_addr_option(sap, salen, options)) {
@@ -1178,7 +1169,7 @@ static int nfsmount_start(struct nfsmount_info *mi)
  *
  * Returns a valid mount command exit code.
  */
-int nfsmount_string(const char *spec, const char *node, char *type,
+int nfsmount_string(const char *spec, const char *node, const char *type,
 		    int flags, char **extra_opts, int fake, int child)
 {
 	struct nfsmount_info mi = {

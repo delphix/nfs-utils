@@ -1299,14 +1299,9 @@ nfs_nfs_version(char *type, struct mount_options *options, struct nfs_version *v
 		if (!(version->minor = strtol(version_val, &cptr, 10)) && cptr == version_val)
 			goto ret_error;
 		version->v_mode = V_SPECIFIC;
-	} else if (version->major > 3 && *cptr == '\0') {
-		version_val = po_get(options, "minorversion");
-		if (version_val != NULL) {
-			version->minor = strtol(version_val, &cptr, 10);
-			version->v_mode = V_SPECIFIC;
-		} else 
-			version->v_mode = V_GENERAL;
-	}
+	} else if (version->major > 3 && *cptr == '\0')
+		version->v_mode = V_GENERAL;
+
 	if (*cptr != '\0')
 		goto ret_error;
 

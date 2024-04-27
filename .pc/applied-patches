@@ -31,3 +31,7 @@ lp-2025302-2-mount.nfs-Fix-the-sloppy-option-processing.patch
 lp-2049262-1-mount.nfs-improve-version-negotiation-when-vers-4-i.patch
 lp-2049262-2-mount.nfs-Use-default-minor-version-when-t-nfs4-is.patch
 lp-2049262-3-mount.nfs-Use-default-minor-version-when-o-v4-is-sp.patch
+lp-2059197-1-mount-move-handling-of-t-nfs4-into-nfs_nfs_version.patch
+lp-2059197-2-mount-Fix-problems-with-parsing-minorversion.patch
+lp-2059197-3-mount.nfs-minorversion-setting-is-being-ignored-wit.patch
+lp-2059197-4-mount.nfs-Fix-auto-protocol-negotiation.patch
