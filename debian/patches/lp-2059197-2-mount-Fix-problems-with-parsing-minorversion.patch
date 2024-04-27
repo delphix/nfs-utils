@@ -1,0 +1,73 @@
+commit 050153ef6a86ff5ab06ef65be36336824a323779
+From: NeilBrown <neilb@suse.com>
+Date: Wed, 26 Jul 2017 13:51:51 -0400
+Subject: mount: Fix problems with parsing minorversion=
+ 1/ minorversion=0 is not recognized, as errors from
+    strtol() are not correctly detected.
+ 2/ when there is an error in the minorversion= value,
+    no message is presented.
+ 3/ Current code recognizes "minorversion" and sets V_SPECIFIC,
+    but then because *cptr == '\0', the v_mode is reset to V_GENERAL.
+    This results in minorversion negotiation, which is not wanted.
+ 
+ This patch addresses all of these.
+ 
+ Signed-off-by: NeilBrown <neilb@suse.com>
+ Signed-off-by: Steve Dickson <steved@redhat.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/2059197
+Bug: https://lore.kernel.org/all/149992740578.9181.10837920531865843446.stgit@noble/
+Origin: upstream, https://git.linux-nfs.org/?p=steved/nfs-utils.git;a=commitdiff;h=050153ef6a86ff5ab06ef65be36336824a323779
+Last-Update: 2024-04-03
+
+
+Index: nfs-utils-1.3.4/utils/mount/network.c
+===================================================================
+--- nfs-utils-1.3.4.orig/utils/mount/network.c	2024-04-03 14:43:58.209536973 +1300
++++ nfs-utils-1.3.4/utils/mount/network.c	2024-04-03 14:43:58.205536908 +1300
+@@ -93,7 +93,6 @@
+ 	"v4",
+ 	"vers",
+ 	"nfsvers",
+-	"minorversion",
+ 	NULL,
+ };
+ 
+@@ -1283,17 +1282,19 @@
+ 	if (!version_val)
+ 		goto ret_error;
+ 
+-	if (!(version->major = strtol(version_val, &cptr, 10)))
++	version->major = strtol(version_val, &cptr, 10);
++	if (cptr == version_val || (*cptr && *cptr != '.'))
+ 		goto ret_error;
+-
+-	if (strcmp(nfs_version_opttbl[i], "minorversion") == 0) {
++	if (version->major == 4 && *cptr != '.' &&
++	    (version_val = po_get(options, "minorversion")) != NULL) {
++		version->minor = strtol(version_val, &cptr, 10);
++		i = -1;
++		if (*cptr)
++			goto ret_error;
+ 		version->v_mode = V_SPECIFIC;
+-		version->minor = version->major;
+-		version->major = 4;
+ 	} else if (version->major < 4)
+ 		version->v_mode = V_SPECIFIC;
+-
+-	if (*cptr == '.') {
++	else if (*cptr == '.') {
+ 		version_val = ++cptr;
+ 		if (!(version->minor = strtol(version_val, &cptr, 10)) && cptr == version_val)
+ 			goto ret_error;
+@@ -1307,7 +1308,10 @@
+ 	return 1;
+ 
+ ret_error:
+-	if (i <= 2 ) {
++	if (i < 0) {
++		nfs_error(_("%s: parsing error on 'minorversion=' option"),
++			progname);
++	} else if (i <= 2 ) {
+ 		nfs_error(_("%s: parsing error on 'v' option"),
+ 			progname);
+ 	} else if (i == 3 ) {
