@@ -2,3 +2,14 @@ Tests: local-server-client
 Depends: nfs-kernel-server
 # we need machine isolation as we need to modprobe stuff
 Restrictions: needs-root, isolation-machine, breaks-testbed
+
+Tests: kerberos-mount
+Depends: nfs-kernel-server, krb5-kdc, krb5-admin-server, krb5-user, keyutils
+Restrictions: needs-root, isolation-machine, breaks-testbed
+
+Tests: v3-mount
+Depends: nfs-kernel-server
+# this one allow stderr because when mounting nfsv3, a systemd message
+# about statd being started shows up, and I rather not supress stderr
+# in the mount command
+Restrictions: needs-root, isolation-machine, breaks-testbed, allow-stderr

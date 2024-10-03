@@ -96,8 +96,8 @@ typedef struct mexport {
 	struct mexport *	m_next;
 	struct mclient *	m_client;
 	struct exportent	m_export;
-	int			m_exported;	/* known to knfsd. -1 means not sure */
-	int			m_xtabent  : 1,	/* xtab entry exists */
+	int			m_exported;	/* known to knfsd. */
+	unsigned int		m_xtabent  : 1,	/* xtab entry exists */
 				m_mayexport: 1,	/* derived from xtabbed */
 				m_changed  : 1, /* options (may) have changed */
 				m_warned   : 1; /* warned about multiple exports
@@ -105,7 +105,8 @@ typedef struct mexport {
 } nfs_export;
 
 #define HASH_TABLE_SIZE 1021
-#define DEFAULT_TTL	(30 * 60)
+
+extern int default_ttl;
 
 typedef struct _exp_hash_entry {
 	nfs_export * p_first;
@@ -134,25 +135,19 @@ struct addrinfo *		client_resolve(const struct sockaddr *sap);
 int 				client_member(const char *client,
 						const char *name);
 
-int				export_read(char *fname);
-int				export_d_read(const char *dname);
+int				export_read(char *fname, int ignore_hosts);
+int				export_d_read(const char *dname, int ignore_hosts);
 void				export_reset(nfs_export *);
 nfs_export *			export_lookup(char *hname, char *path, int caconical);
 nfs_export *			export_find(const struct addrinfo *ai,
 						const char *path);
-nfs_export *			export_allowed(const struct addrinfo *ai,
-						const char *path);
 nfs_export *			export_create(struct exportent *, int canonical);
 void				exportent_release(struct exportent *);
 void				export_freeall(void);
-int				export_export(nfs_export *);
-int				export_unexport(nfs_export *);
 
-int				xtab_mount_read(void);
+extern struct state_paths etab;
 int				xtab_export_read(void);
-int				xtab_mount_write(void);
 int				xtab_export_write(void);
-void				xtab_append(nfs_export *);
 
 int				secinfo_addflavor(struct flav_info *, struct exportent *);
 
@@ -169,8 +164,6 @@ struct addrinfo *		host_reliable_addrinfo(const struct sockaddr *sap);
 __attribute__((__malloc__))
 struct addrinfo *		host_numeric_addrinfo(const struct sockaddr *sap);
 
-int				rmtab_read(void);
-
 struct nfskey *			key_lookup(char *hname);
 
 struct export_features {
@@ -180,5 +173,7 @@ struct export_features {
 
 struct export_features *get_export_features(void);
 void fix_pseudoflavor_flags(struct exportent *ep);
+char *exportent_realpath(struct exportent *eep);
+int export_test(struct exportent *eep, int with_fsid);
 
 #endif /* EXPORTFS_H */

@@ -210,7 +210,7 @@ static int dm_device_remove_byname(const char *dev_name)
 	return ret;
 }
 
-int dm_device_remove(uint64_t dev)
+static int dm_device_remove(uint64_t dev)
 {
 	struct dm_task *dmt;
 	struct dm_names *dmnames;
@@ -400,15 +400,17 @@ uint64_t dm_device_create(struct bl_volume *vols, int num_vols)
 			}
 			dev = node->bv_vols[0]->param.bv_dev;
 			tmp = table->params;
-			BL_LOG_INFO("%s: major %lu minor %lu", __func__,
-					MAJOR(dev), MINOR(dev));
+			BL_LOG_INFO("%s: major %llu minor %llu", __func__,
+					(long long unsigned)MAJOR(dev), 
+					(long long unsigned)MINOR(dev));
 			if (!dm_format_dev(tmp, DM_PARAMS_LEN,
 					   MAJOR(dev), MINOR(dev))) {
 				free(table);
 				goto out;
 			}
 			tmp += strlen(tmp);
-			sprintf(tmp, " %lu", node->param.bv_offset);
+			sprintf(tmp, " %llu", 
+				(long long unsigned)node->param.bv_offset);
 			add_to_bl_dm_table(&bl_table_head, table);
 			break;
 		case BLOCK_VOLUME_STRIPE:
@@ -462,7 +464,8 @@ uint64_t dm_device_create(struct bl_volume *vols, int num_vols)
 				tmp = table->params;
 				dev = node->bv_vols[i]->param.bv_dev;
 				BL_LOG_INFO("%s: major %lu minor %lu", __func__,
-					MAJOR(dev), MINOR(dev));
+					(long unsigned int)MAJOR(dev), 
+					(long unsigned int)MINOR(dev));
 				if (!dm_format_dev(tmp, DM_PARAMS_LEN,
 						   MAJOR(dev), MINOR(dev))) {
 					free(table);

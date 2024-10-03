@@ -36,6 +36,8 @@
 #include <sys/queue.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
 
 struct conf_list_node {
 	TAILQ_ENTRY(conf_list_node) link;
@@ -47,24 +49,28 @@ struct conf_list {
 	TAILQ_HEAD(conf_list_fields_head, conf_list_node) fields;
 };
 
-extern char    *conf_path;
-
 extern int      conf_begin(void);
-extern int      conf_decode_base64(uint8_t *, uint32_t *, unsigned char *);
+extern int      conf_decode_base64(uint8_t *, uint32_t *, const unsigned char *);
 extern int      conf_end(int, int);
 extern void     conf_free_list(struct conf_list *);
-extern struct sockaddr *conf_get_address(char *, char *);
-extern struct conf_list *conf_get_list(char *, char *);
-extern struct conf_list *conf_get_tag_list(char *, char *);
-extern int      conf_get_num(char *, char *, int);
-extern char    *conf_get_str(char *, char *);
-extern char    *conf_get_section(char *, char *, char *);
-extern void     conf_init(void);
-extern int      conf_match_num(char *, char *, int);
-extern void     conf_reinit(void);
-extern int      conf_remove(int, char *, char *);
-extern int      conf_remove_section(int, char *);
-extern void     conf_report(void);
+extern struct sockaddr *conf_get_address(const char *, const char *);
+extern struct conf_list *conf_get_list(const char *, const char *);
+extern struct conf_list *conf_get_tag_list(const char *, const char *);
+extern int      conf_get_num(const char *, const char *, int);
+extern _Bool    conf_get_bool(const char *, const char *, _Bool);
+extern char    *conf_get_str(const char *, const char *);
+extern char    *conf_get_str_with_def(const char *, const char *, char *);
+extern char    *conf_get_section(const char *, const char *, const char *);
+extern char    *conf_get_entry(const char *, const char *, const char *);
+extern int      conf_init_file(const char *);
+extern void     conf_cleanup(void);
+extern int      conf_match_num(const char *, const char *, int);
+extern int      conf_remove(int, const char *, const char *);
+extern int      conf_remove_section(int, const char *);
+extern void     conf_report(FILE *);
+extern int      conf_write(const char *, const char *, const char *, const char *, const char *);
+
+extern const char *modified_by;
 
 /*
  * Convert letter from upper case to lower case

@@ -10,12 +10,18 @@ case "$1" in
 	ucf --three-way /usr/share/nfs-kernel-server/conffiles/nfs-kernel-server.default /etc/default/nfs-kernel-server
 
 	for f in /var/lib/nfs/etab  \
-		 /var/lib/nfs/rmtab \
-		 /var/lib/nfs/xtab; do
+		 /var/lib/nfs/rmtab; do
 	    [ -e $f ] || touch $f
 	done
 
 	update-rc.d nfs-kernel-server defaults 20 80 >/dev/null
+
+	# Remove leftover /fsid.sock file on upgrade (Cf. #1041147)
+	if dpkg --compare-versions "$2" lt 1:2.6.3-2~; then
+		if [ -S /fsid.sock ]; then
+			rm -f /fsid.sock
+		fi
+	fi
     ;;
 esac
 

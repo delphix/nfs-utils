@@ -19,6 +19,8 @@ mountstats \- Displays various NFS client per-mount statistics
 .RB [ \-r | \-\-rpc ]
 |
 .RB  [ \-R | \-\-raw ]
+|
+.RB  [ \-x | \-\-xprt ]
 ]
 .RI [ mountpoint ] ...
 .P
@@ -33,7 +35,7 @@ mountstats \- Displays various NFS client per-mount statistics
 .RI [ count ]
 .RI [ mountpoint ] ...
 .P
-.B mounstats nfsstat
+.B mountstats nfsstat
 .RB [ \-h | \-\-help ]
 .RB [ \-v | \-\-version ]
 .RB [ \-f | \-\-file
@@ -110,6 +112,9 @@ Display only the raw statistics.  This is intended for use with the
 and
 .BR \-S | \-\-since
 options.
+.TP
+.B \-x, \-\-xprt
+Display only the transport statistics
 .SS Options specific to the iostat sub-command
 .IP "\fIinterval\fP"
 Specifies the amount of time in seconds between each report.  The first report contains statistics for the time since each file system was mounted.  Each subsequent report contains statistics collected during the interval since the previous report.  This may not be used with the

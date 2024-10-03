@@ -24,9 +24,7 @@
 #include <config.h>
 #endif
 
-#ifdef HAVE_LIBIO_H
-#include <libio.h>
-#endif
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/socket.h>

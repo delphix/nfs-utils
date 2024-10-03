@@ -1,12 +1,11 @@
-debian/tmp/sbin/mount.nfs
-debian/tmp/sbin/mount.nfs4
-debian/tmp/sbin/umount.nfs
-debian/tmp/sbin/umount.nfs4
-debian/tmp/sbin/osd_login
+debian/tmp/usr/sbin/mount.nfs
+debian/tmp/usr/sbin/mount.nfs4
+debian/tmp/usr/sbin/umount.nfs
+debian/tmp/usr/sbin/umount.nfs4
 debian/tmp/usr/sbin/blkmapd
-debian/tmp/usr/sbin/rpc.statd sbin/
-debian/tmp/usr/sbin/sm-notify sbin/
-debian/tmp/usr/sbin/showmount sbin/
+debian/tmp/usr/sbin/rpc.statd
+debian/tmp/usr/sbin/sm-notify
+debian/tmp/usr/sbin/showmount
 debian/tmp/usr/sbin/nfsstat
 debian/tmp/usr/sbin/nfsidmap
 debian/tmp/usr/sbin/start-statd
@@ -15,15 +14,20 @@ debian/tmp/usr/sbin/mountstats
 debian/tmp/usr/sbin/rpc.gssd
 debian/tmp/usr/sbin/rpc.idmapd
 debian/tmp/usr/sbin/rpc.svcgssd
+debian/tmp/usr/sbin/rpcctl
 debian/tmp/usr/sbin/rpcdebug
 debian/tmp/var/lib/nfs/state
 debian/idmapd.conf usr/share/nfs-common/conffiles/
+debian/nfs.conf usr/share/nfs-common/conffiles/
 debian/nfs-common.default usr/share/nfs-common/conffiles/
 debian/id_resolver.conf etc/request-key.d/
-debian/nfs-utils_env.sh /usr/lib/systemd/scripts/
-systemd/*.mount /lib/systemd/system
-systemd/*rpc*.service /lib/systemd/system
-systemd/nfs-config.service /lib/systemd/system
-systemd/nfs-idmapd.service /lib/systemd/system
-systemd/nfs-client.target /lib/systemd/system
-systemd/nfs-utils.service /lib/systemd/system
+debian/tmp/usr/lib/systemd/system-generators/rpc-pipefs-generator
+debian/tmp/usr/lib/systemd/system/rpc_pipefs.target
+debian/tmp/usr/lib/systemd/system/*.mount
+debian/tmp/usr/lib/systemd/system/*rpc*.service
+debian/tmp/usr/lib/systemd/system/nfs-idmapd.service
+debian/tmp/usr/lib/systemd/system/nfs-client.target
+debian/tmp/usr/lib/systemd/system/nfs-utils.service
+debian/tmp/usr/sbin/nfsconf
+debian/tmp/usr/lib/udev/rules.d/99-nfs.rules
+debian/tmp/usr/libexec/nfsrahead

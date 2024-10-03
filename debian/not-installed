@@ -1,0 +1,3 @@
+usr/lib/*/libnfsidmap/*.a
+usr/lib/*/libnfsidmap/*.la
+usr/lib/*/libnfsidmap.la

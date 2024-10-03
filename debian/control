@@ -3,19 +3,21 @@ Priority: optional
 Section: net
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 XSBC-Original-Maintainer: Debian kernel team <debian-kernel@lists.debian.org>
-Uploaders: Anibal Monsalve Salazar <anibal@debian.org>, Ben Hutchings <ben@decadent.org.uk>, Steve Langasek <vorlon@debian.org>, Daniel Pocock <pocock@debian.org>
-Build-Depends: debhelper (>= 9.20160709), libwrap0-dev, libevent-dev, libnfsidmap-dev (>= 0.24), libkrb5-dev, libblkid-dev, libkeyutils-dev, pkg-config, libldap2-dev, libcap-dev, libtirpc-dev (>= 1.0.2), libdevmapper-dev, dh-autoreconf, libmount-dev, libsqlite3-dev
-Standards-Version: 4.2.1
-Homepage: http://linux-nfs.org/
-Vcs-Git: https://salsa.debian.org/debian/nfs-utils.git
-Vcs-Browser: https://salsa.debian.org/debian/nfs-utils
+Uploaders: Anibal Monsalve Salazar <anibal@debian.org>, Ben Hutchings <benh@debian.org>, Steve Langasek <vorlon@debian.org>, Salvatore Bonaccorso <carnil@debian.org>
+Build-Depends: debhelper-compat (= 13), libwrap0-dev, libevent-dev, libkrb5-dev, libblkid-dev, libkeyutils-dev, pkg-config, libldap2-dev, libcap-dev, libtirpc-dev, libdevmapper-dev, libmount-dev, libsqlite3-dev, libxml2-dev, dh-apport
+Standards-Version: 4.6.2
+Homepage: https://linux-nfs.org/
+Vcs-Git: https://salsa.debian.org/kernel-team/nfs-utils.git
+Vcs-Browser: https://salsa.debian.org/kernel-team/nfs-utils
 
 Package: nfs-kernel-server
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, nfs-common (= ${binary:Version}), ucf, netbase, lsb-base (>= 1.3-9ubuntu3), keyutils
+Depends: ${shlibs:Depends}, ${misc:Depends}, nfs-common (= ${binary:Version}), ucf, netbase, keyutils
 Provides: knfs, nfs-server
 Conflicts: knfs, nfs-server
 Replaces: knfs, nfs-server
+Recommends: python3, python3-yaml
+Suggests: procps
 Description: support for NFS kernel server
  The NFS kernel server is currently the recommended NFS server for use
  with Linux, featuring features such as NFSv3 and NFSv4, Kerberos
@@ -28,19 +30,52 @@ Description: support for NFS kernel server
  This package contains the user-space support needed to use the
  NFS kernel server. Most administrators wishing to set up an NFS server
  would want to install this package.
-Homepage: http://nfs.sourceforge.net/
 
 Package: nfs-common
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, rpcbind, adduser, ucf, lsb-base (>= 1.3-9ubuntu3), keyutils
-Recommends: python3
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, libnfsidmap1 (= ${binary:Version}), rpcbind, adduser, ucf, keyutils, python3
 Suggests: open-iscsi, watchdog
 Provides: nfs-client
 Conflicts: nfs-client
-Breaks: nfs-kernel-server (<< 1:1.2.8-6~)
-Replaces: nfs-client, nfs-kernel-server (<< 1:1.2.8-6~), mount (<< 2.13~)
+Replaces: nfs-client
 Description: NFS support files common to client and server
  Use this package on any machine that uses NFS, either as client or
  server.  Programs included: lockd, statd, showmount, nfsstat, gssd,
  idmapd and mount.nfs.
-Homepage: http://nfs.sourceforge.net/
+
+Package: libnfsidmap-dev
+Section: libdevel
+Architecture: any
+Depends: libnfsidmap1 (= ${binary:Version}), ${misc:Depends}
+Multi-Arch: same
+Description: header files and docs for libnfsidmap
+ Contains the header files and documentation for libnfsidmap
+ for use in developing applications that use the libnfsidmap library.
+ .
+ libnfsidmap provides functions to map between NFSv4 names (which are
+ of the form user@domain) and local uid's and gid's.
+
+Package: libnfsidmap1
+Section: libs
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Conflicts: libnfsidmap2
+Breaks: libnfsidmap2 (<< 0.25-7~)
+Replaces: libnfsidmap2 (<< 0.25-7~)
+Description: NFS idmapping library
+ libnfsidmap provides functions to map between NFSv4 names (which are
+ of the form user@domain) and local uid's and gid's.
+
+Package: libnfsidmap-regex
+Section: libs
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Plugin to map NFSv4 names to and from ids via regex
+ The regex plugin parses NFSv4 user and groups names using regex to extract the
+ local user or group. NFSv4 names are created by adding constant strings before
+ and after the local user and group names.

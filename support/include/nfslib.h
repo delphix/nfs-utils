@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <paths.h>
@@ -35,37 +36,23 @@
 #ifndef _PATH_IDMAPDCONF
 #define _PATH_IDMAPDCONF	"/etc/idmapd.conf"
 #endif
-#ifndef _PATH_XTAB
-#define _PATH_XTAB		NFS_STATEDIR "/xtab"
-#endif
-#ifndef _PATH_XTABTMP
-#define _PATH_XTABTMP		NFS_STATEDIR "/xtab.tmp"
-#endif
-#ifndef _PATH_XTABLCK
-#define _PATH_XTABLCK		NFS_STATEDIR "/.xtab.lock"
-#endif
-#ifndef _PATH_ETAB
-#define _PATH_ETAB		NFS_STATEDIR "/etab"
-#endif
-#ifndef _PATH_ETABTMP
-#define _PATH_ETABTMP		NFS_STATEDIR "/etab.tmp"
-#endif
-#ifndef _PATH_ETABLCK
-#define _PATH_ETABLCK		NFS_STATEDIR "/.etab.lock"
-#endif
-#ifndef _PATH_RMTAB
-#define _PATH_RMTAB		NFS_STATEDIR "/rmtab"
-#endif
-#ifndef _PATH_RMTABTMP
-#define _PATH_RMTABTMP		_PATH_RMTAB ".tmp"
-#endif
-#ifndef _PATH_RMTABLCK
-#define _PATH_RMTABLCK		NFS_STATEDIR "/.rmtab.lock"
-#endif
 #ifndef _PATH_PROC_EXPORTS
 #define	_PATH_PROC_EXPORTS	"/proc/fs/nfs/exports"
 #define	_PATH_PROC_EXPORTS_ALT	"/proc/fs/nfsd/exports"
 #endif
+
+#define ETAB		"etab"
+#define ETABTMP		"etab.tmp"
+#define ETABLCK 	".etab.lock"
+#define RMTAB		"rmtab"
+#define RMTABTMP	"rmtab.tmp"
+#define RMTABLCK	".rmtab.lock"
+
+struct state_paths {
+	char *statefn;
+	char *tmpfn;
+	char *lockfn;
+};
 
 /* Maximum number of security flavors on an export: */
 #define SECFLAVOR_COUNT 8
@@ -73,6 +60,18 @@
 struct sec_entry {
 	struct flav_info *flav;
 	int flags;
+};
+
+#define XPRTSECMODE_COUNT 3
+
+struct xprtsec_info {
+	const char		*name;
+	int			number;
+};
+
+struct xprtsec_entry {
+	const struct xprtsec_info *info;
+	int			flags;
 };
 
 /*
@@ -96,7 +95,10 @@ struct exportent {
 	char *          e_fslocdata;
 	char *		e_uuid;
 	struct sec_entry e_secinfo[SECFLAVOR_COUNT+1];
+	struct xprtsec_entry e_xprtsec[XPRTSECMODE_COUNT + 1];
 	unsigned int	e_ttl;
+	char *		e_realpath;
+	int		e_reexport;
 };
 
 struct rmtabent {
@@ -111,6 +113,7 @@ struct rmtabent {
 void			setexportent(char *fname, char *type);
 struct exportent *	getexportent(int,int);
 void 			secinfo_show(FILE *fp, struct exportent *ep);
+void			xprtsecinfo_show(FILE *fp, struct exportent *ep);
 void			putexportent(struct exportent *xep);
 void			endexportent(void);
 struct exportent *	mkexportent(char *hname, char *path, char *opts);
@@ -118,6 +121,7 @@ void			dupexportent(struct exportent *dst,
 					struct exportent *src);
 int			updateexportent(struct exportent *eep, char *options);
 
+extern struct state_paths rmtab;
 int			setrmtabent(char *type);
 struct rmtabent *	getrmtabent(int log, long *pos);
 void			putrmtabent(struct rmtabent *xep, long *pos);
@@ -129,6 +133,10 @@ void			fputrmtabent(FILE *fp, struct rmtabent *xep, long *pos);
 void			fendrmtabent(FILE *fp);
 void			frewindrmtabent(FILE *fp);
 
+_Bool state_setup_basedir(const char *, const char *);
+int setup_state_path_names(const char *, const char *, const char *, const char *, struct state_paths *);
+void free_state_path_names(struct state_paths *);
+
 /* mydaemon */
 void daemon_init(bool fg);
 void daemon_ready(void);
@@ -138,25 +146,9 @@ void daemon_ready(void);
  */
 int			wildmat(char *text, char *pattern);
 
-/*
- * nfsd library functions.
- */
-int			nfsctl(int, struct nfsctl_arg *, union nfsctl_res *);
-int			nfsaddclient(struct nfsctl_client *clp);
-int			nfsdelclient(struct nfsctl_client *clp);
-int			nfsexport(struct nfsctl_export *exp);
-int			nfsunexport(struct nfsctl_export *exp);
-
-struct nfs_fh_len *	getfh_old(const struct sockaddr_in *sin,
-					const dev_t dev, const ino_t ino);
-struct nfs_fh_len *	getfh(const struct sockaddr_in *sin, const char *path);
-struct nfs_fh_len *	getfh_size(const struct sockaddr_in *sin,
-					const char *path, int const size);
-
 int qword_get(char **bpp, char *dest, int bufsize);
 int qword_get_int(char **bpp, int *anint);
-void cache_flush(int force);
-int check_new_cache(void);
+void cache_flush(void);
 void qword_add(char **bpp, int *lp, char *str);
 void qword_addhex(char **bpp, int *lp, char *buf, int blen);
 void qword_addint(char **bpp, int *lp, int n);
@@ -182,4 +174,14 @@ void  libtirpc_set_debug(char *name, int level, int use_stderr);
 
 #define UNUSED(x) UNUSED_ ## x __attribute__((unused))
 
+/*
+ * Some versions of freeaddrinfo(3) do not tolerate being
+ * passed a NULL pointer.
+ */
+static inline void nfs_freeaddrinfo(struct addrinfo *ai)
+{
+	if (ai) {
+		freeaddrinfo(ai);
+	}
+}
 #endif /* NFSLIB_H */

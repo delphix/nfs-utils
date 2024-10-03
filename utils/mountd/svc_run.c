@@ -56,9 +56,9 @@
 #ifdef HAVE_LIBTIRPC
 #include <rpc/rpc_com.h>
 #endif
+#include "export.h"
 
-void cache_set_fds(fd_set *fdset);
-int cache_process_req(fd_set *readfds);
+void my_svc_run(void);
 
 #if defined(__GLIBC__) && LONG_MAX != INT_MAX
 /* bug in glibc 2.3.6 and earlier, we need
@@ -97,26 +97,13 @@ my_svc_run(void)
 	int	selret;
 
 	for (;;) {
-
 		readfds = svc_fdset;
-		cache_set_fds(&readfds);
-
-		selret = select(FD_SETSIZE, &readfds,
-				(void *) 0, (void *) 0, (struct timeval *) 0);
-
-
-		switch (selret) {
-		case -1:
-			if (errno == EINTR || errno == ECONNREFUSED
-			 || errno == ENETUNREACH || errno == EHOSTUNREACH)
-				continue;
+		selret = cache_process(&readfds);
+		if (selret < 0) {
 			xlog(L_ERROR, "my_svc_run() - select: %m");
 			return;
-
-		default:
-			selret -= cache_process_req(&readfds);
-			if (selret)
-				svc_getreqset(&readfds);
 		}
+		if (selret)
+			svc_getreqset(&readfds);
 	}
 }

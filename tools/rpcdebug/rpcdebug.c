@@ -74,7 +74,8 @@ main(int argc, char **argv)
 			opt_c = 1;
 			break;
 		case 'h':
-			usage(0, module);
+			usage(0, module); /* usage does not return */
+			break;
 		case 'm':
 			module = optarg;
 			break;
@@ -256,7 +257,7 @@ get_flags(char *module)
 		perror(filename);
 		exit(1);
 	}
-	if ((len = read(sysfd, buffer, sizeof(buffer))) < 0) {
+	if ((len = read(sysfd, buffer, sizeof(buffer))) <= 0) {
 		perror("read");
 		exit(1);
 	}

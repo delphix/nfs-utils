@@ -6,7 +6,7 @@ set -e
 
 case "$1" in
     purge)
-	for FILE in /etc/default/nfs-common /etc/idmapd.conf; do
+	for FILE in /etc/default/nfs-common /etc/idmapd.conf /etc/nfs.conf; do
 	    # Taken from the ucf example postrm
 	    for ext in '~' '%' .bak .dpkg-tmp .dpkg-new .dpkg-old .dpkg-dist;  do
 		rm -f $FILE$ext
@@ -16,6 +16,7 @@ case "$1" in
 		ucf --purge $FILE
 	    fi
 	done
+	rm -f /etc/nfs.conf.d/local.conf
 
 	rm -f /var/lib/nfs/state    \
 	      /var/lib/nfs/sm/*     \

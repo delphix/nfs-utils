@@ -25,11 +25,8 @@ PREFIX=/usr
 
 # Read config
 DEFAULTFILE=/etc/default/nfs-kernel-server
-RPCNFSDCOUNT=8
 RPCNFSDPRIORITY=0
-RPCMOUNTDOPTS=
 NEED_SVCGSSD=no
-RPCSVCGSSDOPTS=
 PROCNFSD_MOUNTPOINT=/proc/fs/nfsd
 if [ -f $DEFAULTFILE ]; then
     . $DEFAULTFILE
@@ -38,7 +35,7 @@ fi
 . /lib/lsb/init-functions
 
 do_modprobe() {
-    if [ -x /sbin/modprobe -a -f /proc/modules ]
+    if [ -x /sbin/modprobe ] && [ -f /proc/modules ]
     then
         modprobe -q "$1" || true
     fi
@@ -66,25 +63,26 @@ case "$1" in
 			export_files="$export_files $file"
 		fi
 	done
+	# shellcheck disable=SC2086
 	if [ -f /etc/exports ] && grep -q '^[[:space:]]*[^#]*/' $export_files
 	then
 		do_modprobe nfsd
 
 		# See if our running kernel supports the NFS kernel server
 		if ! grep -E -qs "[[:space:]]nfsd\$" /proc/filesystems; then
-			log_warning_msg "Not starting $DESC: no support in current kernel."
+			log_warning_msg "Not starting $DESC: no support in current kernel"
 			exit 0
 		fi
 		
 		do_mount nfsd $PROCNFSD_MOUNTPOINT || NEED_SVCGSSD=no
-		log_begin_msg "Exporting directories for $DESC..."
+		log_action_begin_msg "Exporting directories for $DESC"
 		$PREFIX/sbin/exportfs -r
 		RET=$?
 		if [ $RET != 0 ]; then
-			log_end_msg $RET
+			log_action_end_msg $RET
 			exit $RET
 		fi
-		log_end_msg 0
+		log_action_end_msg 0
 
 		log_daemon_msg "Starting $DESC"
 		log_progress_msg "nfsd"
@@ -100,7 +98,7 @@ case "$1" in
 
 		start-stop-daemon --start --oknodo --quiet \
 		    --nicelevel $RPCNFSDPRIORITY \
-		    --exec $PREFIX/sbin/rpc.nfsd -- $RPCNFSDCOUNT
+		    --exec $PREFIX/sbin/rpc.nfsd
 		RET=$?
 		if [ $RET != 0 ]; then
 			log_end_msg $RET
@@ -111,7 +109,7 @@ case "$1" in
 		ClearAddr=
 		if [ -f /proc/net/rpc/auth.unix.ip/channel ]
 		then
-		    fgrep -qs 127.0.0.1 /proc/net/rpc/auth.unix.ip/content || {
+		    grep -Fqs 127.0.0.1 /proc/net/rpc/auth.unix.ip/content || {
 			echo "nfsd 127.0.0.1 2147483647 localhost" >/proc/net/rpc/auth.unix.ip/channel
 			ClearAddr=yes
 		    }
@@ -123,7 +121,7 @@ case "$1" in
 			do_modprobe rpcsec_gss_krb5
 			log_progress_msg "svcgssd"
 			start-stop-daemon --start --oknodo --quiet \
-			    --exec $PREFIX/sbin/rpc.svcgssd -- $RPCSVCGSSDOPTS
+			    --exec $PREFIX/sbin/rpc.svcgssd
 			RET=$?
 			if [ $RET != 0 ]; then
 				log_end_msg $RET
@@ -133,7 +131,7 @@ case "$1" in
 
 		log_progress_msg "mountd"
 		start-stop-daemon --start --oknodo --quiet \
-		    --exec $PREFIX/sbin/rpc.mountd -- $RPCMOUNTDOPTS
+		    --exec $PREFIX/sbin/rpc.mountd
 		RET=$?
 		if [ $RET != 0 ]; then
 			log_end_msg $RET
@@ -142,7 +140,7 @@ case "$1" in
 
 		log_end_msg 0
 	else
-		log_warning_msg "Not starting $DESC: no exports."
+		log_warning_msg "Not starting $DESC: no exports"
 	fi
 	;;
 
@@ -180,14 +178,14 @@ case "$1" in
 
 	log_end_msg 0
 
-	log_begin_msg "Unexporting directories for $DESC..."
+	log_action_begin_msg "Unexporting directories for $DESC"
 	$PREFIX/sbin/exportfs -au
 	RET=$?
 	if [ $RET != 0 ]; then
-		log_end_msg $RET
+		log_action_end_msg $RET
 		exit $RET
 	fi
-	log_end_msg 0
+	log_action_end_msg 0
 
 	if mountpoint -q $PROCNFSD_MOUNTPOINT
 	then
@@ -196,14 +194,8 @@ case "$1" in
 	;;
 
   status)
-	if pidof nfsd >/dev/null
-	then
-	    echo "nfsd running"
-	    exit 0
-	else
-	    echo "nfsd not running"
-	    exit 3
-	fi
+	status_of_proc nfsd nfsd
+	exit $?
 	;;
 
   reload | force-reload)

@@ -34,9 +34,13 @@
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif /* HAVE_CONFIG_H */
+
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/poll.h>
+#include <sys/inotify.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -45,11 +49,12 @@
 
 #include <err.h>
 #include <errno.h>
-#include <event.h>
+#include <event2/event.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,11 +64,8 @@
 #include <grp.h>
 #include <limits.h>
 #include <ctype.h>
+#include <libgen.h>
 #include <nfsidmap.h>
-
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif /* HAVE_CONFIG_H */
 
 #include "xlog.h"
 #include "conffile.h"
@@ -71,7 +73,7 @@
 #include "nfslib.h"
 
 #ifndef PIPEFS_DIR
-#define PIPEFS_DIR  "/var/lib/nfs/rpc_pipefs/"
+#define PIPEFS_DIR  NFS_STATEDIR "/rpc_pipefs/"
 #endif
 
 #ifndef NFSD_DIR
@@ -113,7 +115,7 @@ struct idmap_client {
 	int                        ic_fd;
 	int                        ic_dirfd;
 	int                        ic_scanned;
-	struct event               ic_event;
+	struct event              *ic_event;
 	TAILQ_ENTRY(idmap_client)  ic_next;
 };
 static struct idmap_client nfsd_ic[2] = {
@@ -153,6 +155,7 @@ static void idtonameres(struct idmap_msg *);
 static void nametoidres(struct idmap_msg *);
 
 static int nfsdopen(void);
+static void nfsdclose(void);
 static int nfsdopenone(struct idmap_client *);
 static void nfsdreopen_one(struct idmap_client *);
 static void nfsdreopen(void);
@@ -164,17 +167,30 @@ static char pipefsdir[PATH_MAX];
 static char *nobodyuser, *nobodygroup;
 static uid_t nobodyuid;
 static gid_t nobodygid;
+static struct event_base *evbase = NULL;
+static bool signal_received = false;
+static int inotify_fd = -1;
 
-/* Used by conffile.c in libnfs.a */
-char *conf_path;
+static void
+sig_die(int signal)
+{
+	if (signal_received) {
+		xlog_warn("forced exiting on signal %d\n", signal);
+		exit(0);
+	}
+
+	signal_received = true;
+	xlog_warn("exiting on signal %d\n", signal);
+	event_base_loopexit(evbase, NULL);
+}
 
 static int
 flush_nfsd_cache(char *path, time_t now)
 {
 	int fd;
-	char stime[20];
+	char stime[32];
 
-	sprintf(stime, "%ld\n", now);
+	sprintf(stime, "%" PRId64 "\n", (int64_t)now);
 	fd = open(path, O_RDWR);
 	if (fd == -1)
 		return -1;
@@ -199,7 +215,7 @@ flush_nfsd_idmap_cache(void)
 	return ret;
 }
 
-void usage(char *progname)
+static void usage(char *progname)
 {
 	fprintf(stderr, "Usage: %s [-hfvCS] [-p path] [-c path]\n",
 		basename(progname));
@@ -208,10 +224,11 @@ void usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	int fd = 0, opt, fg = 0, nfsdret = -1;
+	int wd = -1, opt, fg = 0, nfsdret = -1;
 	struct idmap_clientq icq;
-	struct event rootdirev, clntdirev, svrdirev;
-	struct event initialize;
+	struct event *rootdirev = NULL, *clntdirev = NULL,
+		     *svrdirev = NULL, *inotifyev = NULL;
+	struct event *initialize = NULL;
 	struct passwd *pw;
 	struct group *gr;
 	struct stat sb;
@@ -219,8 +236,8 @@ main(int argc, char **argv)
 	int serverstart = 1, clientstart = 1;
 	int ret;
 	char *progname;
+	char *conf_path = NULL;
 
-	conf_path = _PATH_IDMAPDCONF;
 	nobodyuser = NFS4NOBODY_USER;
 	nobodygroup = NFS4NOBODY_GROUP;
 	strlcpy(pipefsdir, PIPEFS_DIR, sizeof(pipefsdir));
@@ -234,8 +251,11 @@ main(int argc, char **argv)
 #define GETOPTSTR "hvfd:p:U:G:c:CS"
 	opterr=0; /* Turn off error messages */
 	while ((opt = getopt(argc, argv, GETOPTSTR)) != -1) {
-		if (opt == 'c')
+		if (opt == 'c') {
+			warnx("-c is deprecated and may be removed in the "
+			      "future.  See idmapd(8).");
 			conf_path = optarg;
+		}
 		if (opt == '?') {
 			if (strchr(GETOPTSTR, optopt))
 				warnx("'-%c' option requires an argument.", optopt);
@@ -247,19 +267,43 @@ main(int argc, char **argv)
 	}
 	optind = 1;
 
-	if (stat(conf_path, &sb) == -1 && (errno == ENOENT || errno == EACCES)) {
-		warn("Skipping configuration file \"%s\"", conf_path);
-		conf_path = NULL;
+	if (conf_path) { /* deprecated -c option was specified */
+		if (stat(conf_path, &sb) == -1 && (errno == ENOENT || errno == EACCES)) {
+			warn("Skipping configuration file \"%s\"", conf_path);
+			conf_path = NULL;
+		} else {
+			conf_init_file(conf_path);
+			verbose = conf_get_num("General", "Verbosity", 0);
+			cache_entry_expiration = conf_get_num("General",
+					"Cache-Expiration", DEFAULT_IDMAP_CACHE_EXPIRY);
+			CONF_SAVE(xpipefsdir, conf_get_str("General", "Pipefs-Directory"));
+			if (xpipefsdir != NULL)
+				strlcpy(pipefsdir, xpipefsdir, sizeof(pipefsdir));
+			CONF_SAVE(nobodyuser, conf_get_str("Mapping", "Nobody-User"));
+			CONF_SAVE(nobodygroup, conf_get_str("Mapping", "Nobody-Group"));
+			if (conf_get_bool("General", "server-only", false))
+				clientstart = 0;
+			if (conf_get_bool("General", "client-only", false))
+				serverstart = 0;
+		}
 	} else {
-		conf_init();
-		verbose = conf_get_num("General", "Verbosity", 0);
-		cache_entry_expiration = conf_get_num("General",
-				"Cache-Expiration", DEFAULT_IDMAP_CACHE_EXPIRY);
+		conf_path = NFS_CONFFILE;
+		conf_init_file(conf_path);
 		CONF_SAVE(xpipefsdir, conf_get_str("General", "Pipefs-Directory"));
 		if (xpipefsdir != NULL)
 			strlcpy(pipefsdir, xpipefsdir, sizeof(pipefsdir));
+
+		conf_path = _PATH_IDMAPDCONF;
+		conf_init_file(conf_path);
+		verbose = conf_get_num("General", "Verbosity", 0);
+		cache_entry_expiration = conf_get_num("General",
+				"cache-expiration", DEFAULT_IDMAP_CACHE_EXPIRY);
 		CONF_SAVE(nobodyuser, conf_get_str("Mapping", "Nobody-User"));
 		CONF_SAVE(nobodygroup, conf_get_str("Mapping", "Nobody-Group"));
+		if (conf_get_bool("General", "server-only", false))
+			clientstart = 0;
+		if (conf_get_bool("General", "client-only", false))
+			serverstart = 0;
 	}
 
 	while ((opt = getopt(argc, argv, GETOPTSTR)) != -1)
@@ -294,7 +338,9 @@ main(int argc, char **argv)
 	if (!serverstart && !clientstart)
 		errx(1, "it is illegal to specify both -C and -S");
 
-	strncat(pipefsdir, "/nfs", sizeof(pipefsdir));
+	strncat(pipefsdir, "/nfs", sizeof(pipefsdir)-1);
+
+	daemon_init(fg);
 
 	if ((pw = getpwnam(nobodyuser)) == NULL)
 		errx(1, "Could not find user \"%s\"", nobodyuser);
@@ -312,11 +358,11 @@ main(int argc, char **argv)
 	if (nfs4_init_name_mapping(conf_path))
 		errx(1, "Unable to create name to user id mappings.");
 
-	daemon_init(fg);
+	evbase = event_base_new();
+	if (evbase == NULL)
+		errx(1, "Failed to create event base.");
 
-	event_init();
-
-	if (verbose > 0)
+	if (verbose > 1)
 		xlog_warn("Expiration time is %d seconds.",
 			     cache_entry_expiration);
 	if (serverstart) {
@@ -357,55 +403,122 @@ main(int argc, char **argv)
 			}
 		}
 
-		if ((fd = open(pipefsdir, O_RDONLY)) == -1)
-			xlog_err("main: open(%s): %s", pipefsdir, strerror(errno));
-
-		if (fcntl(fd, F_SETSIG, SIGUSR1) == -1)
-			xlog_err("main: fcntl(%s): %s", pipefsdir, strerror(errno));
-
-		if (fcntl(fd, F_NOTIFY,
-			DN_CREATE | DN_DELETE | DN_MODIFY | DN_MULTISHOT) == -1) {
-			xlog_err("main: fcntl(%s): %s", pipefsdir, strerror(errno));
-			if (errno == EINVAL)
-				xlog_err("main: Possibly no Dnotify support in kernel.");
+		inotify_fd = inotify_init1(IN_NONBLOCK);
+		if (inotify_fd == -1) {
+			xlog_err("Unable to initialise inotify_init1: %s\n", strerror(errno));
+		} else {
+			wd = inotify_add_watch(inotify_fd, pipefsdir, IN_CREATE | IN_DELETE);
+			if (wd < 0)
+				xlog_err("Unable to inotify_add_watch(%s): %s\n", pipefsdir, strerror(errno));
 		}
+
 		TAILQ_INIT(&icq);
 
+		signal(SIGINT, sig_die);
+		signal(SIGTERM, sig_die);
+
 		/* These events are persistent */
-		signal_set(&rootdirev, SIGUSR1, dirscancb, &icq);
-		signal_add(&rootdirev, NULL);
-		signal_set(&clntdirev, SIGUSR2, clntscancb, &icq);
-		signal_add(&clntdirev, NULL);
-		signal_set(&svrdirev, SIGHUP, svrreopen, NULL);
-		signal_add(&svrdirev, NULL);
+		rootdirev = evsignal_new(evbase, SIGUSR1, dirscancb, &icq);
+		if (rootdirev == NULL)
+			errx(1, "Failed to create SIGUSR1 event.");
+		evsignal_add(rootdirev, NULL);
+		clntdirev = evsignal_new(evbase, SIGUSR2, clntscancb, &icq);
+		if (clntdirev == NULL)
+			errx(1, "Failed to create SIGUSR2 event.");
+		evsignal_add(clntdirev, NULL);
+		svrdirev = evsignal_new(evbase, SIGHUP, svrreopen, NULL);
+		if (svrdirev == NULL)
+			errx(1, "Failed to create SIGHUP event.");
+		evsignal_add(svrdirev, NULL);
+		if ( wd >= 0) {
+			inotifyev = event_new(evbase, inotify_fd,
+					      EV_READ | EV_PERSIST, dirscancb, &icq);
+			if (inotifyev == NULL)
+				errx(1, "Failed to create inotify read event.");
+			event_add(inotifyev, NULL);
+		}
 
 		/* Fetch current state */
 		/* (Delay till start of event_dispatch to avoid possibly losing
 		 * a SIGUSR1 between here and the call to event_dispatch().) */
-		evtimer_set(&initialize, dirscancb, &icq);
-		evtimer_add(&initialize, &now);
+		initialize = evtimer_new(evbase, dirscancb, &icq);
+		if (initialize == NULL)
+			errx(1, "Failed to create initialize event.");
+		evtimer_add(initialize, &now);
 	}
 
-	if (nfsdret != 0 && fd == 0)
+	if (nfsdret != 0 && wd < 0)
 		xlog_err("main: Neither NFS client nor NFSd found");
 
 	daemon_ready();
 
-	if (event_dispatch() < 0)
+	if (event_base_dispatch(evbase) < 0)
 		xlog_err("main: event_dispatch returns errno %d (%s)",
 			    errno, strerror(errno));
-	/* NOTREACHED */
-	return 1;
+
+	nfs4_term_name_mapping();
+	nfsdclose();
+
+	if (inotifyev)
+		event_free(inotifyev);
+	if (inotify_fd != -1)
+		close(inotify_fd);
+
+	if (initialize)
+		event_free(initialize);
+	if (rootdirev)
+		event_free(rootdirev);
+	if (clntdirev)
+		event_free(clntdirev);
+	if (svrdirev)
+		event_free(svrdirev);
+	event_base_free(evbase);
+
+	return 0;
 }
 
 static void
-dirscancb(int UNUSED(fd), short UNUSED(which), void *data)
+flush_inotify(int fd)
+{
+	while (true) {
+		char buf[4096] __attribute__ ((aligned(__alignof__(struct inotify_event))));
+		const struct inotify_event *ev;
+		ssize_t len;
+		char *ptr;
+
+		len = read(fd, buf, sizeof(buf));
+		if (len == -1 && errno == EINTR)
+			continue;
+
+		if (len <= 0)
+			break;
+
+		for (ptr = buf; ptr < buf + len;
+		     ptr += sizeof(struct inotify_event) + ev->len) {
+
+			ev = (const struct inotify_event *)ptr;
+			if (verbose > 2)
+				xlog_warn("pipefs inotify: wd=%i, mask=0x%08x, len=%i, name=%s",
+				  ev->wd, ev->mask, ev->len, ev->len ? ev->name : "");
+		}
+	}
+}
+
+static void
+dirscancb(int fd, short UNUSED(which), void *data)
 {
 	int nent, i;
 	struct dirent **ents;
 	struct idmap_client *ic, *nextic;
-	char path[PATH_MAX];
+	char path[PATH_MAX+256]; /* + sizeof(d_name) */
 	struct idmap_clientq *icq = data;
+
+	if (fd != -1)
+		flush_inotify(fd);
+
+	TAILQ_FOREACH(ic, icq, ic_next) {
+		ic->ic_scanned = 0;
+	}
 
 	nent = scandir(pipefsdir, &ents, NULL, alphasort);
 	if (nent == -1) {
@@ -440,14 +553,14 @@ dirscancb(int UNUSED(fd), short UNUSED(which), void *data)
 			strlcat(path, "/idmap", sizeof(path));
 			strlcpy(ic->ic_path, path, sizeof(ic->ic_path));
 
-			if (verbose > 0)
-				xlog_warn("New client: %s", ic->ic_clid);
-
 			if (nfsopen(ic) == -1) {
 				close(ic->ic_dirfd);
 				free(ic);
 				goto out;
 			}
+
+			if (verbose > 2)
+				xlog_warn("New client: %s", ic->ic_clid);
 
 			ic->ic_id = "Client";
 
@@ -462,17 +575,19 @@ dirscancb(int UNUSED(fd), short UNUSED(which), void *data)
 	while(ic != NULL) {
 		nextic=TAILQ_NEXT(ic, ic_next);
 		if (!ic->ic_scanned) {
-			event_del(&ic->ic_event);
-			close(ic->ic_fd);
-			close(ic->ic_dirfd);
+			if (ic->ic_event)
+				event_free(ic->ic_event);
+			if (ic->ic_fd != -1)
+				close(ic->ic_fd);
+			if (ic->ic_dirfd != -1)
+				close(ic->ic_dirfd);
 			TAILQ_REMOVE(icq, ic, ic_next);
-			if (verbose > 0) {
+			if (verbose > 2) {
 				xlog_warn("Stale client: %s", ic->ic_clid);
 				xlog_warn("\t-> closed %s", ic->ic_path);
 			}
 			free(ic);
-		} else
-			ic->ic_scanned = 0;
+		}
 		ic = nextic;
 	}
 
@@ -493,14 +608,16 @@ static void
 clntscancb(int UNUSED(fd), short UNUSED(which), void *data)
 {
 	struct idmap_clientq *icq = data;
-	struct idmap_client *ic;
+	struct idmap_client *ic, *ic_next;
 
-	TAILQ_FOREACH(ic, icq, ic_next)
+	for (ic = TAILQ_FIRST(icq); ic != NULL; ic = ic_next) { 
+		ic_next = TAILQ_NEXT(ic, ic_next);
 		if (ic->ic_fd == -1 && nfsopen(ic) == -1) {
 			close(ic->ic_dirfd);
 			TAILQ_REMOVE(icq, ic, ic_next);
 			free(ic);
 		}
+	}
 }
 
 static void
@@ -516,7 +633,7 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 	unsigned long tmp;
 
 	if (which != EV_READ)
-		goto out;
+		return;
 
 	len = read(ic->ic_fd, buf, sizeof(buf));
 	if (len == 0)
@@ -539,13 +656,13 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 	/* Authentication name -- ignored for now*/
 	if (getfield(&bp, authbuf, sizeof(authbuf)) == -1) {
 		xlog_warn("nfsdcb: bad authentication name in upcall\n");
-		goto out;
+		return;
 	}
 	if (getfield(&bp, typebuf, sizeof(typebuf)) == -1) {
 		xlog_warn("nfsdcb: bad type in upcall\n");
-		goto out;
+		return;
 	}
-	if (verbose > 0)
+	if (verbose > 2)
 		xlog_warn("nfsdcb: authbuf=%s authtype=%s",
 			     authbuf, typebuf);
 
@@ -557,26 +674,26 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 		im.im_conv = IDMAP_CONV_NAMETOID;
 		if (getfield(&bp, im.im_name, sizeof(im.im_name)) == -1) {
 			xlog_warn("nfsdcb: bad name in upcall\n");
-			goto out;
+			return;
 		}
 		break;
 	case IC_IDNAME:
 		im.im_conv = IDMAP_CONV_IDTONAME;
 		if (getfield(&bp, buf1, sizeof(buf1)) == -1) {
 			xlog_warn("nfsdcb: bad id in upcall\n");
-			goto out;
+			return;
 		}
 		tmp = strtoul(buf1, (char **)NULL, 10);
 		im.im_id = (u_int32_t)tmp;
 		if ((tmp == ULONG_MAX && errno == ERANGE)
 				|| (unsigned long)im.im_id != tmp) {
 			xlog_warn("nfsdcb: id '%s' too big!\n", buf1);
-			goto out;
+			return;
 		}
 		break;
 	default:
 		xlog_warn("nfsdcb: Unknown which type %d", ic->ic_which);
-		goto out;
+		return;
 	}
 
 	imconv(ic, &im);
@@ -596,8 +713,8 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 		/* Name */
 		addfield(&bp, &bsiz, im.im_name);
 		/* expiry */
-		snprintf(buf1, sizeof(buf1), "%lu",
-			 time(NULL) + cache_entry_expiration);
+		snprintf(buf1, sizeof(buf1), "%" PRId64,
+			 (int64_t)time(NULL) + cache_entry_expiration);
 		addfield(&bp, &bsiz, buf1);
 		/* Note that we don't want to write the id if the mapping
 		 * failed; instead, by leaving it off, we write a negative
@@ -624,8 +741,8 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 		snprintf(buf1, sizeof(buf1), "%u", im.im_id);
 		addfield(&bp, &bsiz, buf1);
 		/* expiry */
-		snprintf(buf1, sizeof(buf1), "%lu",
-			 time(NULL) + cache_entry_expiration);
+		snprintf(buf1, sizeof(buf1), "%" PRId64,
+			 (int64_t)time(NULL) + cache_entry_expiration);
 		addfield(&bp, &bsiz, buf1);
 		/* Note we're ignoring the status field in this case; we'll
 		 * just map to nobody instead. */
@@ -637,7 +754,7 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 		break;
 	default:
 		xlog_warn("nfsdcb: Unknown which type %d", ic->ic_which);
-		goto out;
+		return;
 	}
 
 	bsiz = sizeof(buf) - bsiz;
@@ -645,9 +762,6 @@ nfsdcb(int UNUSED(fd), short which, void *data)
 	if (atomicio((void*)write, ic->ic_fd, buf, bsiz) != bsiz)
 		xlog_warn("nfsdcb: write(%s) failed: errno %d (%s)",
 			     ic->ic_path, errno, strerror(errno));
-
-out:
-	event_add(&ic->ic_event, NULL);
 }
 
 static void
@@ -691,14 +805,12 @@ nfscb(int UNUSED(fd), short which, void *data)
 	struct idmap_msg im;
 
 	if (which != EV_READ)
-		goto out;
+		return;
 
 	if (atomicio(read, ic->ic_fd, &im, sizeof(im)) != sizeof(im)) {
 		if (verbose > 0)
 			xlog_warn("nfscb: read(%s): %s", ic->ic_path, strerror(errno));
-		if (errno == EPIPE)
-			return;
-		goto out;
+		return;
 	}
 
 	imconv(ic, &im);
@@ -712,8 +824,19 @@ nfscb(int UNUSED(fd), short which, void *data)
 
 	if (atomicio((void*)write, ic->ic_fd, &im, sizeof(im)) != sizeof(im))
 		xlog_warn("nfscb: write(%s): %s", ic->ic_path, strerror(errno));
-out:
-	event_add(&ic->ic_event, NULL);
+}
+
+static void
+nfsdclose_one(struct idmap_client *ic)
+{
+	if (ic->ic_event) {
+		event_free(ic->ic_event);
+		ic->ic_event = NULL;
+	}
+	if (ic->ic_fd != -1) {
+		close(ic->ic_fd);
+		ic->ic_fd = -1;
+	}
 }
 
 static void
@@ -721,18 +844,22 @@ nfsdreopen_one(struct idmap_client *ic)
 {
 	int fd;
 
-	if (verbose > 0)
+	if (verbose > 2)
 		xlog_warn("ReOpening %s", ic->ic_path);
 
 	if ((fd = open(ic->ic_path, O_RDWR, 0)) != -1) {
-		if ((event_initialized(&ic->ic_event)))
-			event_del(&ic->ic_event);
-		if (ic->ic_fd != -1)
-			close(ic->ic_fd);
+		nfsdclose_one(ic);
 
-		ic->ic_event.ev_fd = ic->ic_fd = fd;
-		event_set(&ic->ic_event, ic->ic_fd, EV_READ, nfsdcb, ic);
-		event_add(&ic->ic_event, NULL);
+		ic->ic_fd = fd;
+		ic->ic_event = event_new(evbase, ic->ic_fd, EV_READ | EV_PERSIST, nfsdcb, ic);
+		if (ic->ic_event == NULL) {
+			xlog_warn("nfsdreopen: Failed to create event for '%s'",
+				  ic->ic_path);
+			close(ic->ic_fd);
+			ic->ic_fd = -1;
+			return;
+		}
+		event_add(ic->ic_event, NULL);
 	} else {
 		xlog_warn("nfsdreopen: Opening '%s' failed: errno %d (%s)",
 			ic->ic_path, errno, strerror(errno));
@@ -740,7 +867,7 @@ nfsdreopen_one(struct idmap_client *ic)
 }
 
 static void
-nfsdreopen()
+nfsdreopen(void)
 {
 	nfsdreopen_one(&nfsd_ic[IC_NAMEID]);
 	nfsdreopen_one(&nfsd_ic[IC_IDNAME]);
@@ -754,6 +881,13 @@ nfsdopen(void)
 		    nfsdopenone(&nfsd_ic[IC_IDNAME]) == 0) ? 0 : -1);
 }
 
+static void
+nfsdclose(void)
+{
+	nfsdclose_one(&nfsd_ic[IC_NAMEID]);
+	nfsdclose_one(&nfsd_ic[IC_IDNAME]);
+}
+
 static int
 nfsdopenone(struct idmap_client *ic)
 {
@@ -765,10 +899,18 @@ nfsdopenone(struct idmap_client *ic)
 		return (-1);
 	}
 
-	event_set(&ic->ic_event, ic->ic_fd, EV_READ, nfsdcb, ic);
-	event_add(&ic->ic_event, NULL);
+	ic->ic_event = event_new(evbase, ic->ic_fd, EV_READ | EV_PERSIST, nfsdcb, ic);
+	if (ic->ic_event == NULL) {
+		if (verbose > 0)
+			xlog_warn("nfsdopenone: Create event for %s failed",
+				  ic->ic_path);
+		close(ic->ic_fd);
+		ic->ic_fd = -1;
+		return (-1);
+	}
+	event_add(ic->ic_event, NULL);
 
-	if (verbose > 0)
+	if (verbose > 2)
 		xlog_warn("Opened %s", ic->ic_path);
 
 	return (0);
@@ -778,24 +920,34 @@ static int
 nfsopen(struct idmap_client *ic)
 {
 	if ((ic->ic_fd = open(ic->ic_path, O_RDWR, 0)) == -1) {
-		switch (errno) {
-		case ENOENT:
-			fcntl(ic->ic_dirfd, F_SETSIG, SIGUSR2);
-			fcntl(ic->ic_dirfd, F_NOTIFY,
-			    DN_CREATE | DN_DELETE | DN_MULTISHOT);
-			break;
-		default:
-			xlog_warn("nfsopen: open(%s): %s", ic->ic_path, strerror(errno));
-			return (-1);
+		if (errno == ENOENT) {
+			char *slash;
+
+			slash = strrchr(ic->ic_path, '/');
+			if (!slash)
+				return -1;
+			*slash = 0;
+			inotify_add_watch(inotify_fd, ic->ic_path, IN_CREATE | IN_ONLYDIR | IN_ONESHOT);
+			*slash = '/';
+			if (verbose > 2)
+				xlog_warn("Path %s not available. waiting...", ic->ic_path);
+			return -1;
 		}
-	} else {
-		event_set(&ic->ic_event, ic->ic_fd, EV_READ, nfscb, ic);
-		event_add(&ic->ic_event, NULL);
-		fcntl(ic->ic_dirfd, F_NOTIFY, 0);
-		fcntl(ic->ic_dirfd, F_SETSIG, 0);
-		if (verbose > 0)
-			xlog_warn("Opened %s", ic->ic_path);
+
+		xlog_warn("nfsopen: open(%s): %s", ic->ic_path, strerror(errno));
+		return (-1);
 	}
+
+	ic->ic_event = event_new(evbase, ic->ic_fd, EV_READ | EV_PERSIST, nfscb, ic);
+	if (ic->ic_event == NULL) {
+		xlog_warn("nfsopen: Create event for %s failed", ic->ic_path);
+		close(ic->ic_fd);
+		ic->ic_fd = -1;
+		return -1;
+	}
+	event_add(ic->ic_event, NULL);
+	if (verbose > 2)
+		xlog_warn("Opened %s", ic->ic_path);
 
 	return (0);
 }
@@ -907,7 +1059,8 @@ static int
 getfield(char **bpp, char *fld, size_t fldsz)
 {
 	char *bp;
-	int val, n;
+	unsigned int val; 
+	int n;
 
 	while ((bp = strsep(bpp, " ")) != NULL && bp[0] == '\0')
 		;

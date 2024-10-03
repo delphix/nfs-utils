@@ -6,7 +6,7 @@ EXTRA_DIST	= $(man8_MANS)
 sbin_PROGRAMS	= showmount
 showmount_SOURCES = showmount.c
 showmount_LDADD = ../../support/export/libexport.a \
-		  ../../support/nfs/libnfs.a \
+		  ../../support/nfs/libnfs.la \
 		  ../../support/misc/libmisc.a \
 		  $(LIBTIRPC)
 showmount_CPPFLAGS = $(AM_CPPFLAGS) $(CPPFLAGS) \
