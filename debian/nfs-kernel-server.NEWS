@@ -1,3 +1,10 @@
+nfs-utils (1:2.6.1-1~exp1) unstable; urgency=medium
+
+  Support for NFSv2 has been removed from nfs-kernel-server.  It was
+  previously disabled by default, but still available.
+
+ -- Ben Hutchings <benh@debian.org>  Sun, 13 Mar 2022 19:05:02 +0100
+
 nfs-utils (1:1.0.1-1) unstable; urgency=low
 
   * Exports default to "sync", that is, synchronous writes.

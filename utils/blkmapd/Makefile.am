@@ -13,7 +13,7 @@ blkmapd_SOURCES = \
 	dm-device.c \
 	device-discovery.h
 
-blkmapd_LDADD = -ldevmapper ../../support/nfs/libnfs.a
+blkmapd_LDADD = -ldevmapper ../../support/nfs/libnfs.la
 
 MAINTAINERCLEANFILES = Makefile.in
 

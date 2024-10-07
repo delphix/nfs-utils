@@ -210,7 +210,7 @@ init_subnetwork(nfs_client *clp)
 	set_addrlist(clp, 0, ai->ai_addr);
 	family = ai->ai_addr->sa_family;
 
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 
 	switch (family) {
 	case AF_INET:
@@ -309,7 +309,7 @@ client_lookup(char *hname, int canonical)
 		init_addrlist(clp, ai);
 
 out:
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 	return clp;
 }
 
@@ -482,8 +482,9 @@ add_name(char *old, const char *add)
 		else
 			cp = cp + strlen(cp);
 	}
-	if (old) {
-		strncpy(new, old, cp-old);
+	len = cp-old;
+	if (old && len > 0) {
+		strncpy(new, old, len);
 		new[cp-old] = 0;
 	} else {
 		new[0] = 0;
@@ -607,24 +608,36 @@ check_subnetwork(const nfs_client *clp, const struct addrinfo *ai)
 static int
 check_wildcard(const nfs_client *clp, const struct addrinfo *ai)
 {
-	char *cname = clp->m_hostname;
-	char *hname = ai->ai_canonname;
+	char *hname, *cname = clp->m_hostname;
 	struct hostent *hp;
 	char **ap;
+	int match;
 
-	if (wildmat(hname, cname))
-		return 1;
+	match = 0;
+
+	hname = host_canonname(ai->ai_addr);
+	if (hname == NULL)
+		goto out;
+
+	if (wildmat(hname, cname)) {
+		match = 1;
+		goto out;
+	}
 
 	/* See if hname aliases listed in /etc/hosts or nis[+]
 	 * match the requested wildcard */
 	hp = gethostbyname(hname);
 	if (hp != NULL) {
 		for (ap = hp->h_aliases; *ap; ap++)
-			if (wildmat(*ap, cname))
-				return 1;
+			if (wildmat(*ap, cname)) {
+				match = 1;
+				goto out;
+			}
 	}
 
-	return 0;
+out:
+	free(hname);
+	return match;
 }
 
 /*
@@ -644,11 +657,9 @@ check_netgroup(const nfs_client *clp, const struct addrinfo *ai)
 
 	match = 0;
 
-	hname = strdup(ai->ai_canonname);
-	if (hname == NULL) {
-		xlog(D_GENERAL, "%s: no memory for strdup", __func__);
+	hname = host_canonname(ai->ai_addr);
+	if (hname == NULL)
 		goto out;
-	}
 
 	/* First, try to match the hostname without
 	 * splitting off the domain */
@@ -673,7 +684,7 @@ check_netgroup(const nfs_client *clp, const struct addrinfo *ai)
 	tmp = host_pton(hname);
 	if (tmp != NULL) {
 		char *cname = host_canonname(tmp->ai_addr);
-		freeaddrinfo(tmp);
+		nfs_freeaddrinfo(tmp);
 
 		/* The resulting FQDN may be in our netgroup. */
 		if (cname != NULL) {
@@ -688,6 +699,9 @@ check_netgroup(const nfs_client *clp, const struct addrinfo *ai)
 
 	/* check whether the IP itself is in the netgroup */
 	ip = calloc(INET6_ADDRSTRLEN, 1);
+	if (ip == NULL)
+		goto out;
+
 	if (inet_ntop(ai->ai_family, &(((struct sockaddr_in *)ai->ai_addr)->sin_addr), ip, INET6_ADDRSTRLEN) == ip) {
 		if (innetgr(netgroup, ip, NULL, NULL)) {
 			free(hname);

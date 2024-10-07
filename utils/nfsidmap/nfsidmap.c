@@ -15,9 +15,10 @@
 #include <unistd.h>
 #include "xlog.h"
 #include "conffile.h"
+#include "xcommon.h"
 
 int verbose = 0;
-char *usage = "Usage: %s [-vh] [-c || [-u|-g|-r key] || -d || -l || [-t timeout] key desc]";
+#define USAGE "Usage: %s [-vh] [-c || [-u|-g|-r key] || -d || -l || [-t timeout] key desc]"
 
 #define MAX_ID_LEN   11
 #define IDMAP_NAMESZ 128
@@ -204,8 +205,9 @@ static int id_lookup(char *name_at_domain, key_serial_t key, int type)
 		sprintf(id, "%u", gid);
 	}
 	if (rc < 0) {
-		xlog_errno(rc, "id_lookup: %s: failed: %m",
-			(type == USER ? "nfs4_owner_to_uid" : "nfs4_group_owner_to_gid"));
+		xlog_errno(rc, "id_lookup: %s: for %s failed: %m",
+			(type == USER ? "nfs4_owner_to_uid" : "nfs4_group_owner_to_gid"),
+			name_at_domain);
 		return EXIT_FAILURE;
 	}
 
@@ -261,8 +263,9 @@ static int name_lookup(char *id, key_serial_t key, int type)
 		rc = nfs4_gid_to_name(gid, domain, name, IDMAP_NAMESZ);
 	}
 	if (rc) {
-		xlog_errno(rc, "name_lookup: %s: failed: %m",
-			(type == USER ? "nfs4_uid_to_name" : "nfs4_gid_to_name"));
+		xlog_errno(rc, "name_lookup: %s: for %u failed: %m",
+			(type == USER ? "nfs4_uid_to_name" : "nfs4_gid_to_name"),
+			(type == USER ? uid : gid));
 		return EXIT_FAILURE;
 	}
 
@@ -282,7 +285,7 @@ static int key_invalidate(char *keystr, int keymask)
 {
 	FILE *fp;
 	char buf[BUFSIZ], *ptr;
-	key_serial_t key;
+	unsigned int key;
 	int mask;
 
 	xlog_syslog(0);
@@ -400,7 +403,7 @@ int main(int argc, char **argv)
 			break;
 		case 'h':
 		default:
-			xlog_warn(usage, progname);
+			xlog_warn(USAGE, progname);
 			exit(opt == 'h' ? 0 : 1);
 		}
 	}
@@ -432,7 +435,7 @@ int main(int argc, char **argv)
 	xlog_stderr(verbose);
 	if ((argc - optind) != 2) {
 		xlog_warn("Bad arg count. Check /etc/request-key.conf");
-		xlog_warn(usage, progname);
+		xlog_warn(USAGE, progname);
 		return EXIT_FAILURE;
 	}
 
@@ -441,11 +444,7 @@ int main(int argc, char **argv)
 
 	key = strtol(argv[optind++], NULL, 10);
 
-	arg = strdup(argv[optind]);
-	if (arg == NULL) {
-		xlog_err("strdup failed: %m");
-		return EXIT_FAILURE;
-	}
+	arg = xstrdup(argv[optind]);
 	type = strtok(arg, ":");
 	value = strtok(NULL, ":");
 	if (value == NULL) {
@@ -454,7 +453,7 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 	if (verbose) {
-		xlog_warn("key: 0x%lx type: %s value: %s timeout %ld",
+		xlog_warn("key: 0x%x type: %s value: %s timeout %d",
 			key, type, value, timeout);
 	}
 

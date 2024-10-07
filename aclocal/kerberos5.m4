@@ -6,7 +6,7 @@ dnl The Kerberos gssapi library will be dynamically loaded?
 AC_DEFUN([AC_KERBEROS_V5],[
   AC_MSG_CHECKING(for Kerberos v5)
   AC_ARG_WITH(krb5,
-  [AC_HELP_STRING([--with-krb5=DIR], [use Kerberos v5 installation in DIR])],
+  [AS_HELP_STRING([--with-krb5=DIR],[use Kerberos v5 installation in DIR])],
   [ case "$withval" in
     yes|no)
        krb5_with=""
@@ -39,10 +39,14 @@ AC_DEFUN([AC_KERBEROS_V5],[
       AC_DEFINE_UNQUOTED(KRB5_VERSION, $K5VERS, [Define this as the Kerberos version number])
       if test -f $dir/include/gssapi/gssapi_krb5.h -a \
                 \( -f $dir/lib/libgssapi_krb5.a -o \
+                   -f $dir/lib/libgssapi_krb5.so -o \
+                   -f $dir/lib32/libgssapi_krb5.a -o \
+                   -f $dir/lib32/libgssapi_krb5.so -o \
                    -f $dir/lib64/libgssapi_krb5.a -o \
                    -f $dir/lib64/libgssapi_krb5.so -o \
                    -f $dir/lib/$MULTIARCH/libgssapi_krb5.so -o \
-                   -f $dir/lib/libgssapi_krb5.so \) ; then
+                   -f $dir/lib/$(uname -m)-linux-gnu/libgssapi_krb5.a -o \
+                   -f $dir/lib/$(uname -m)-linux-gnu/libgssapi_krb5.so \) ; then
          AC_DEFINE(HAVE_KRB5, 1, [Define this if you have MIT Kerberos libraries])
          KRBDIR="$dir"
          gssapi_lib=gssapi_krb5

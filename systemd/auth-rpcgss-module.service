@@ -7,10 +7,12 @@
 [Unit]
 Description=Kernel Module supporting RPCSEC_GSS
 DefaultDependencies=no
-Before=rpc-svcgssd.service rpc-gssd.service
-Wants=rpc-svcgssd.service rpc-gssd.service
+Before=gssproxy.service rpc-svcgssd.service rpc-gssd.service
+Wants=gssproxy.service rpc-gssd.service
 ConditionPathExists=/etc/krb5.keytab
+ConditionVirtualization=!container
 
 [Service]
 Type=oneshot
 ExecStart=/sbin/modprobe -q auth_rpcgss
+RemainAfterExit=yes

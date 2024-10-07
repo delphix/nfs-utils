@@ -8,7 +8,7 @@
 .\" Rewritten by Chuck Lever <chuck.lever@oracle.com>, 2009.
 .\" Copyright 2009 Oracle.  All rights reserved.
 .\"
-.TH RPC.STATD 8 "1 November 2009
+.TH RPC.STATD 8 "1 November 2009"
 .SH NAME
 rpc.statd \- NSM service daemon
 .SH SYNOPSIS
@@ -185,18 +185,16 @@ restarts without the
 option.
 .TP
 .BI "\-n, " "" "\-\-name " ipaddr " | " hostname
-Specifies the bind address used for RPC listener sockets.
+This string is only used by the
+.B sm-notify
+command as the source address from which to send reboot notification requests.
+.IP
 The
 .I ipaddr
 form can be expressed as either an IPv4 or an IPv6 presentation address.
 If this option is not specified,
 .B rpc.statd
 uses a wildcard address as the transport bind address.
-.IP
-This string is also passed to the
-.B sm-notify
-command to be used as the source address from which
-to send reboot notification requests.
 See
 .BR sm-notify (8)
 for details.
@@ -247,7 +245,7 @@ should listen on for
 .B NLM
 requests.
 .TP
-.BI "\-P, " "" \-\-state\-directory\-path " pathname
+.BI "\-P, " "" \-\-state\-directory\-path " pathname"
 Specifies the pathname of the parent directory
 where NSM state information resides.
 If this option is not specified,
@@ -275,6 +273,37 @@ Causes
 to display version information on
 .I stderr
 and then exit.
+.SH CONFIGURATION FILE
+Many of the options that can be set on the command line can also be
+controlled through values set in the
+.B [statd]
+or, in some cases, the
+.B [lockd]
+sections of the
+.I /etc/nfs.conf
+configuration file.
+Values recognized in the
+.B [statd]
+section include
+.BR port ,
+.BR outgoing-port ,
+.BR name ,
+.BR state-directory-path ", and"
+.B ha-callout
+which each have the same effect as the option with the same name.
+
+The values recognized in the
+.B [lockd]
+section include
+.B port
+and
+.B udp-port
+which have the same effect as the
+.B --nlm-port
+and
+.B --nlm-udp-port
+options, respectively.
+
 .SH SECURITY
 The
 .B rpc.statd
@@ -395,6 +424,11 @@ it attempts to start listeners on network transports marked 'visible' in
 As long as at least one network transport listener starts successfully,
 .B rpc.statd
 will operate.
+.SH ENVIRONMENT
+.TP
+.B RPC_STATD_NO_NOTIFY=
+If set to a positive integer, has the same effect as
+.IR \-\-no\-notify .
 .SH FILES
 .TP 2.5i
 .I /var/lib/nfs/sm

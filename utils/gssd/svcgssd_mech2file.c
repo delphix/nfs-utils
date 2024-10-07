@@ -41,6 +41,7 @@
 #include <gssapi/gssapi.h>
 #include <string.h>
 
+char * mech2file(gss_OID mech);
 
 #define g_OID_equal(o1,o2) \
    (((o1)->length == (o2)->length) && \

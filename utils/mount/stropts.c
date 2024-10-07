@@ -35,6 +35,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "nfslib.h"
 #include "sockaddr.h"
 #include "xcommon.h"
 #include "mount.h"
@@ -48,6 +49,7 @@
 #include "version.h"
 #include "parse_dev.h"
 #include "conffile.h"
+#include "misc.h"
 
 #ifndef NFS_PROGRAM
 #define NFS_PROGRAM	(100003)
@@ -229,7 +231,8 @@ static int nfs_append_addr_option(const struct sockaddr *sap,
 
 /*
  * Called to discover our address and append an appropriate 'clientaddr='
- * option to the options string.
+ * option to the options string. If the supplied 'clientaddr=' value does
+ * not match either IPV4/IPv6 any or a local address, then fail the mount.
  *
  * Returns 1 if 'clientaddr=' option created successfully or if
  * 'clientaddr=' option is already present; otherwise zero.
@@ -242,8 +245,27 @@ static int nfs_append_clientaddr_option(const struct sockaddr *sap,
 	struct sockaddr *my_addr = &address.sa;
 	socklen_t my_len = sizeof(address);
 
-	if (po_contains(options, "clientaddr") == PO_FOUND)
+	if (po_contains(options, "clientaddr") == PO_FOUND) {
+		char *addr = po_get(options, "clientaddr");
+		union nfs_sockaddr nfs_address;
+		struct sockaddr *nfs_saddr = &nfs_address.sa;
+		socklen_t nfs_salen = sizeof(nfs_address);
+
+		/* translate the input for clientaddr to nfs_sockaddr */
+		if (!nfs_string_to_sockaddr(addr, nfs_saddr, &nfs_salen))
+			return 0;
+
+		/* check for IPV4_ANY and IPV6_ANY */
+		if (nfs_is_inaddr_any(nfs_saddr))
+			return 1;
+
+		/* check if ip matches local network addresses */
+		if (!nfs_addr_matches_localips(nfs_saddr))
+			nfs_error(_("%s: [warning] supplied clientaddr=%s "
+				"does not match any existing network "
+				"addresses"), progname, addr);
 		return 1;
+	}
 
 	nfs_callback_address(sap, salen, my_addr, &my_len);
 
@@ -335,6 +357,7 @@ static int nfs_insert_sloppy_option(struct mount_options *options)
 
 static int nfs_set_version(struct nfsmount_info *mi)
 {
+
 	if (!nfs_nfs_version(mi->type, mi->options, &mi->version))
 		return 0;
 
@@ -392,7 +415,9 @@ static int nfs_set_version(struct nfsmount_info *mi)
  */
 static int nfs_validate_options(struct nfsmount_info *mi)
 {
-	if (!nfs_parse_devname(mi->spec, &mi->hostname, NULL))
+	/* For remount, ignore mi->spec: the kernel will. */
+	if (!(mi->flags & MS_REMOUNT) &&
+	    !nfs_parse_devname(mi->spec, &mi->hostname, NULL))
 		return 0;
 
 	if (!nfs_nfs_proto_family(mi->options, &mi->family))
@@ -536,6 +561,10 @@ nfs_rewrite_pmap_mount_options(struct mount_options *options, int checkv4)
 	socklen_t mnt_salen = sizeof(mnt_address);
 	unsigned long protocol;
 	struct pmap mnt_pmap;
+
+	/* initialize structs */
+	memset(&nfs_pmap, 0, sizeof(struct pmap));
+	memset(&mnt_pmap, 0, sizeof(struct pmap));
 
 	/*
 	 * Version and transport negotiation is not required
@@ -725,7 +754,7 @@ static int nfs_do_mount_v4(struct nfsmount_info *mi,
 {
 	struct mount_options *options = po_dup(mi->options);
 	int result = 0;
-	char version_opt[16];
+	char version_opt[32];
 	char *extra_opts = NULL;
 
 	if (!options) {
@@ -736,20 +765,43 @@ static int nfs_do_mount_v4(struct nfsmount_info *mi,
 	if (po_contains(options, "mounthost") ||
 		po_contains(options, "mountaddr") ||
 		po_contains(options, "mountvers") ||
+		po_contains(options, "mountport") ||
 		po_contains(options, "mountproto")) {
 	/*
 	 * Since these mountd options are set assume version 3
 	 * is wanted so error out with EPROTONOSUPPORT so the
 	 * protocol negation starts with v3.
 	 */
+		if (verbose) {
+			printf(_("%s: Unsupported nfs4 mount option(s) passed '%s'\n"),
+				progname, *mi->extra_opts);
+		}
 		errno = EPROTONOSUPPORT;
 		goto out_fail;
 	}
 
 	if (mi->version.v_mode != V_SPECIFIC) {
+		char *fmt;
+		switch (mi->version.minor) {
+			/* Old kernels don't support the new "vers=x.y"
+			 * option, but do support old versions of NFS4.
+			 * So use the format that is most widely understood.
+			 */
+		case 0:
+			fmt = "vers=%lu";
+			break;
+		case 1:
+			fmt = "vers=%lu,minorversion=%lu";
+			break;
+		default:
+			fmt = "vers=%lu.%lu";
+			break;
+		}
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 		snprintf(version_opt, sizeof(version_opt) - 1,
-			"vers=%lu.%lu", mi->version.major,
+			fmt, mi->version.major,
 			mi->version.minor);
+#pragma GCC diagnostic warning "-Wformat-nonliteral"
 
 		if (po_append(options, version_opt) == PO_FAILED) {
 			errno = EINVAL;
@@ -851,7 +903,7 @@ out:
  */
 static int nfs_autonegotiate(struct nfsmount_info *mi)
 {
-	int result;
+	int result, olderrno;
 
 	result = nfs_try_mount_v4(mi);
 check_result:
@@ -865,6 +917,9 @@ check_result:
 	case EINVAL:
 		/* A less clear indication that our client
 		 * does not support NFSv4 minor version. */
+	case EACCES:
+		/* An unclear indication that the server
+		 * may not support NFSv4 minor version. */
 		if (mi->version.v_mode != V_SPECIFIC) {
 			if (mi->version.minor > 0) {
 				mi->version.minor--;
@@ -895,7 +950,10 @@ check_result:
 			result = nfs_try_mount_v4(mi);
 			if (result == 0 && errno != ECONNREFUSED)
 				goto check_result;
-		}
+		} else if (result == 0)
+			/* Restore original errno with v3 failures */
+			errno = ECONNREFUSED;
+
 		return result;
 	default:
 		return result;
@@ -905,7 +963,20 @@ fall_back:
 	if (mi->version.v_mode == V_GENERAL)
 		/* v2,3 fallback not allowed */
 		return result;
-	return nfs_try_mount_v3v2(mi, FALSE);
+
+	/*
+	 * Save the original errno in case the v3 
+	 * mount fails from one of the fall_back cases. 
+	 * Report the first failure not the v3 mount failure
+	 */
+	olderrno = errno;
+	if ((result = nfs_try_mount_v3v2(mi, FALSE)))
+		return result;
+
+	if (errno != EBUSY && errno != EACCES)
+		errno = olderrno;
+
+	return result;
 }
 
 /*
@@ -939,13 +1010,15 @@ static int nfs_try_mount(struct nfsmount_info *mi)
 		}
 
 		if (!nfs_append_addr_option(address->ai_addr,
-					    address->ai_addrlen, mi->options))
+					    address->ai_addrlen, mi->options)) {
+			nfs_freeaddrinfo(address);
+			errno = ENOMEM;
 			return 0;
+		}
 		mi->address = address;
 	}
 
 	switch (mi->version.major) {
-		case 2:
 		case 3:
 			result = nfs_try_mount_v3v2(mi, FALSE);
 			break;
@@ -969,18 +1042,43 @@ static int nfs_try_mount(struct nfsmount_info *mi)
  * failed so far, but fail immediately if there is a local
  * error (like a bad mount option).
  *
- * ESTALE is also a temporary error because some servers
- * return ESTALE when a share is temporarily offline.
+ * If there is a remote error, like ESTALE or RPC_PROGNOTREGISTERED
+ * then it is probably permanent, but there is a small chance
+ * the it is temporary can we caught the server at an awkward
+ * time during start-up.  So require that we see three of those
+ * before treating them as permanent.
+ * For ECONNREFUSED, wait a bit longer as there is often a longer
+ * gap between the network being ready and the NFS server starting.
  *
  * Returns 1 if we should fail immediately, or 0 if we
  * should retry.
  */
 static int nfs_is_permanent_error(int error)
 {
+	static int prev_error;
+	static int rpt_cnt;
+
+	if (error == prev_error)
+		rpt_cnt += 1;
+	else
+		rpt_cnt = 1;
+	prev_error = error;
+
 	switch (error) {
 	case ESTALE:
-	case ETIMEDOUT:
+	case EOPNOTSUPP:	/* aka RPC_PROGNOTREGISTERED */
+		/* If two in a row, assume permanent */
+		return rpt_cnt >= 3;
 	case ECONNREFUSED:
+		/* Like the above, this can be temporary during a
+		 * small window.  However it is typically a larger
+		 * window than for the others, and we have historically
+		 * treated this as a temporary (i.e. long timeout)
+		 * error with no complaints, so continue to treat
+		 * it as temporary.
+		 */
+		return 0;	/* temporary */
+	case ETIMEDOUT:
 	case EHOSTUNREACH:
 	case EAGAIN:
 		return 0;	/* temporary */
@@ -1011,22 +1109,22 @@ static int nfsmount_fg(struct nfsmount_info *mi)
 		if (nfs_try_mount(mi))
 			return EX_SUCCESS;
 
-		if (errno == EBUSY)
-			/* The only cause of EBUSY is if exactly the desired
-			 * filesystem is already mounted.  That can arguably
-			 * be seen as success.  "mount -a" tries to optimise
-			 * out this case but sometimes fails.  Help it out
-			 * by pretending everything is rosy
+		if (errno == EBUSY && is_mountpoint(mi->node)) {
+			/*
+			 * EBUSY can happen when mounting a filesystem that
+			 * is already mounted or when the context= are
+			 * different when using the -o sharecache
+			 *
+			 * Only error out in the latter case.
 			 */
 			return EX_SUCCESS;
+		}
 
 		if (nfs_is_permanent_error(errno))
 			break;
 
-		if (time(NULL) > timeout) {
-			errno = ETIMEDOUT;
+		if (time(NULL) > timeout)
 			break;
-		}
 
 		if (errno != ETIMEDOUT) {
 			if (sleep(secs))
@@ -1035,7 +1133,7 @@ static int nfsmount_fg(struct nfsmount_info *mi)
 			if (secs > 10)
 				secs = 10;
 		}
-	};
+	}
 
 	mount_error(mi->spec, mi->node, errno);
 	return EX_FAIL;
@@ -1053,8 +1151,7 @@ static int nfsmount_parent(struct nfsmount_info *mi)
 	if (nfs_try_mount(mi))
 		return EX_SUCCESS;
 
-	/* retry background mounts when the server is not up */
-	if (nfs_is_permanent_error(errno) && errno != EOPNOTSUPP) {
+	if (nfs_is_permanent_error(errno)) {
 		mount_error(mi->spec, mi->node, errno);
 		return EX_FAIL;
 	}
@@ -1089,8 +1186,7 @@ static int nfsmount_child(struct nfsmount_info *mi)
 		if (nfs_try_mount(mi))
 			return EX_SUCCESS;
 
-		/* retry background mounts when the server is not up */
-		if (nfs_is_permanent_error(errno) && errno != EOPNOTSUPP)
+		if (nfs_is_permanent_error(errno))
 			break;
 
 		if (time(NULL) > timeout)
@@ -1153,6 +1249,14 @@ static int nfsmount_start(struct nfsmount_info *mi)
 	if (!nfs_validate_options(mi))
 		return EX_FAIL;
 
+	/* 
+	 * NFS v2 has been deprecated
+	 */
+	if (mi->version.major == 2) {
+		mount_error(mi->spec, mi->node, EOPNOTSUPP);
+		return EX_FAIL;
+	}
+
 	/*
 	 * Avoid retry and negotiation logic when remounting
 	 */
@@ -1200,7 +1304,7 @@ int nfsmount_string(const char *spec, const char *node, char *type,
 	} else
 		nfs_error(_("%s: internal option parsing error"), progname);
 
-	freeaddrinfo(mi.address);
+	nfs_freeaddrinfo(mi.address);
 	free(mi.hostname);
 	return retval;
 }

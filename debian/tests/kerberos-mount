@@ -1,0 +1,38 @@
+#!/bin/sh
+
+set -e
+
+. debian/tests/util
+
+cleanup() {
+    umount /mnt || :
+}
+
+trap cleanup EXIT
+
+myhostname="nfs-server.dep8"
+myrealm="DEP8"
+hello="Hello from NFS server $$"
+
+adjust_hostname "${myhostname}"
+
+create_realm ${myrealm} ${myhostname}
+
+for p in "nfs/${myhostname}" "host/${myhostname}"; do
+    create_krb_svc_principal "${p}"
+    extract_principal_key_into_keytab "${p}"
+done
+
+# or else clients have to wait 90s by default
+nfsconf --set nfsd grace-time 10
+systemctl restart nfs-server.service nfs-client.target
+
+mkdir -p /storage
+echo "${hello}" > /storage/hello.txt
+
+echo "/storage *(sec=krb5p,rw,sync,no_subtree_check)" > /etc/exports
+exportfs -rav
+
+mount "${myhostname}":/storage /mnt
+findmnt -n -t nfs4 | grep -E "/storage.*vers=4.*sec=krb5p"
+grep "${hello}" /mnt/hello.txt

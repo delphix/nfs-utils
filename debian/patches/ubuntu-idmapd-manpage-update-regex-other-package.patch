@@ -1,0 +1,12 @@
+--- a/support/nfsidmap/idmapd.conf.5
++++ b/support/nfsidmap/idmapd.conf.5
+@@ -158,6 +158,9 @@
+ .nf
+ 
+ .fi
++.B NOTE:
++In Ubuntu, the regex plugin is shipped in the libnfsidmap-regex package. If you want to use this plugin, please install that package.
++
+ If the "regex" translation method is specified, the following
+ variables within the [REGEX] section are used to map between NFS4 names and local IDs.
+ .TP

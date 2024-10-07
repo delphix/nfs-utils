@@ -1,7 +1,7 @@
 /*
  * support/export/xtab.c
  *
- * Interface to the xtab file.
+ * Interface to the etab/exports file.
  *
  * Copyright (C) 1995, 1996 Olaf Kirch <okir@monad.swb.de>
  */
@@ -10,16 +10,24 @@
 #include <config.h>
 #endif
 
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <libgen.h>
 
 #include "nfslib.h"
 #include "exportfs.h"
 #include "xio.h"
 #include "xlog.h"
 #include "v4root.h"
+#include "misc.h"
+
+static char state_base_dirname[PATH_MAX] = NFS_STATEDIR;
+struct state_paths etab;
 
 int v4root_needed;
 static void cond_rename(char *newfile, char *oldfile);
@@ -29,7 +37,6 @@ xtab_read(char *xtab, char *lockfn, int is_export)
 {
     /* is_export == 0  => reading /proc/fs/nfs/exports - we know these things are exported to kernel
      * is_export == 1  => reading /var/lib/nfs/etab - these things are allowed to be exported
-     * is_export == 2  => reading /var/lib/nfs/xtab - these things might be known to kernel
      */
 	struct exportent	*xp;
 	nfs_export		*exp;
@@ -43,6 +50,14 @@ xtab_read(char *xtab, char *lockfn, int is_export)
 	while ((xp = getexportent(is_export==0, 0)) != NULL) {
 		if (!(exp = export_lookup(xp->e_hostname, xp->e_path, is_export != 1)) &&
 		    !(exp = export_create(xp, is_export!=1))) {
+                        if(xp->e_hostname) {
+                            free(xp->e_hostname);
+                            xp->e_hostname=NULL;
+                        }
+                        if(xp->e_uuid) {
+                            free(xp->e_uuid);
+                            xp->e_uuid=NULL;
+                        }
 			continue;
 		}
 		switch (is_export) {
@@ -55,10 +70,16 @@ xtab_read(char *xtab, char *lockfn, int is_export)
 			if ((xp->e_flags & NFSEXP_FSID) && xp->e_fsid == 0)
 				v4root_needed = 0;
 			break;
-		case 2:
-			exp->m_exported = -1;/* may be exported */
-			break;
-		}
+		}  
+                if(xp->e_hostname) {
+                    free(xp->e_hostname);
+                    xp->e_hostname=NULL;
+                }
+                if(xp->e_uuid) {
+                    free(xp->e_uuid);
+                    xp->e_uuid=NULL;
+                }
+
 	}
 	endexportent();
 	xfunlock(lockid);
@@ -67,25 +88,9 @@ xtab_read(char *xtab, char *lockfn, int is_export)
 }
 
 int
-xtab_mount_read(void)
-{
-	int fd;
-	if ((fd=open(_PATH_PROC_EXPORTS, O_RDONLY))>=0) {
-		close(fd);
-		return xtab_read(_PATH_PROC_EXPORTS,
-				 _PATH_PROC_EXPORTS, 0);
-	} else if ((fd=open(_PATH_PROC_EXPORTS_ALT, O_RDONLY) >= 0)) {
-		close(fd);
-		return xtab_read(_PATH_PROC_EXPORTS_ALT,
-				 _PATH_PROC_EXPORTS_ALT, 0);
-	} else
-		return xtab_read(_PATH_XTAB, _PATH_XTABLCK, 2);
-}
-
-int
 xtab_export_read(void)
 {
-	return xtab_read(_PATH_ETAB, _PATH_ETABLCK, 1);
+	return xtab_read(etab.statefn, etab.lockfn, 1);
 }
 
 /*
@@ -130,32 +135,9 @@ xtab_write(char *xtab, char *xtabtmp, char *lockfn, int is_export)
 }
 
 int
-xtab_export_write()
+xtab_export_write(void)
 {
-	return xtab_write(_PATH_ETAB, _PATH_ETABTMP, _PATH_ETABLCK, 1);
-}
-
-int
-xtab_mount_write()
-{
-	return xtab_write(_PATH_XTAB, _PATH_XTABTMP, _PATH_XTABLCK, 0);
-}
-
-void
-xtab_append(nfs_export *exp)
-{
-	struct exportent xe;
-	int		lockid;
-
-	if ((lockid = xflock(_PATH_XTABLCK, "w")) < 0)
-		return;
-	setexportent(_PATH_XTAB, "a");
-	xe = exp->m_export;
-	xe.e_hostname = exp->m_client->m_hostname;
-	putexportent(&xe);
-	endexportent();
-	xfunlock(lockid);
-	exp->m_xtabent = 1;
+	return xtab_write(etab.statefn, etab.tmpfn, etab.lockfn, 1);
 }
 
 /*
@@ -200,4 +182,75 @@ static void cond_rename(char *newfile, char *oldfile)
 	close(ofd);
 	rename(newfile, oldfile);
 	return;
+}
+
+/*
+ * Returns a dynamically allocated, '\0'-terminated buffer
+ * containing an appropriate pathname, or NULL if an error
+ * occurs.  Caller must free the returned result with free(3).
+ */
+static char *
+state_make_pathname(const char *tabname)
+{
+	return generic_make_pathname(state_base_dirname, tabname);
+}
+
+/**
+ * state_setup_basedir - set up basedir
+ * @progname: C string containing name of program, for error messages
+ * @parentdir: C string containing pathname to on-disk state, or NULL
+ *
+ * This runs before logging is set up, so error messages are directed
+ * to stderr.
+ *
+ * Returns true and sets up our basedir, if @parentdir was valid
+ * and usable; otherwise false is returned.
+ */
+_Bool
+state_setup_basedir(const char *progname, const char *parentdir)
+{
+	return generic_setup_basedir(progname, parentdir, state_base_dirname,
+				     PATH_MAX);
+}
+
+int
+setup_state_path_names(const char *progname, const char *statefn,
+		      const char *tmpfn, const char *lockfn,
+		      struct state_paths *paths)
+{
+	paths->statefn = state_make_pathname(statefn);
+	if (!paths->statefn) {
+		fprintf(stderr, "%s: state_make_pathname(%s) failed\n",
+			progname, statefn);
+		goto out_err;
+	}
+	paths->tmpfn = state_make_pathname(tmpfn);
+	if (!paths->tmpfn) {
+		fprintf(stderr, "%s: state_make_pathname(%s) failed\n",
+			progname, tmpfn);
+		goto out_free_statefn;
+	}
+	paths->lockfn = state_make_pathname(lockfn);
+	if (!paths->lockfn) {
+		fprintf(stderr, "%s: state_make_pathname(%s) failed\n",
+			progname, lockfn);
+		goto out_free_tmpfn;
+	}
+	return 1;
+
+out_free_tmpfn:
+	free(paths->tmpfn);
+out_free_statefn:
+	free(paths->statefn);
+out_err:
+	return 0;
+
+}
+
+void
+free_state_path_names(struct state_paths *paths)
+{
+	free(paths->statefn);
+	free(paths->tmpfn);
+	free(paths->lockfn);
 }

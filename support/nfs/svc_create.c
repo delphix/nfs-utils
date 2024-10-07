@@ -184,7 +184,7 @@ svc_create_sock(const struct sockaddr *sap, socklen_t salen,
 		type = SOCK_STREAM;
 		break;
 	default:
-		xlog(D_GENERAL, "%s: Unrecognized bind address semantics: %u",
+		xlog(D_GENERAL, "%s: Unrecognized bind address semantics: %lu",
 			__func__, nconf->nc_semantics);
 		return -1;
 	}
@@ -273,7 +273,7 @@ svc_create_nconf_rand_port(const char *name, const rpcprog_t program,
 	bindaddr.qlen = SOMAXCONN;
 
 	xprt = svc_tli_create(RPC_ANYFD, nconf, &bindaddr, 0, 0);
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 	if (xprt == NULL) {
 		xlog(L_ERROR, "Failed to create listener xprt "
 			"(%s, %u, %s)", name, version, nconf->nc_netid);
@@ -364,11 +364,11 @@ svc_create_nconf_fixed_port(const char *name, const rpcprog_t program,
 
 	svc_create_cache_xprt(xprt);
 
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 	return 1;
 
 out_free:
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 	return 0;
 }
 

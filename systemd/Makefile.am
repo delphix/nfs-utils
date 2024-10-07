@@ -2,10 +2,13 @@
 
 MAINTAINERCLEANFILES = Makefile.in
 
+udev_rulesdir = /usr/lib/udev/rules.d/
+udev_files = 60-nfs.rules
+
 unit_files =  \
     nfs-client.target \
+    rpc_pipefs.target \
     \
-    nfs-config.service \
     nfs-mountd.service \
     nfs-server.service \
     nfs-utils.service \
@@ -13,11 +16,20 @@ unit_files =  \
     rpc-statd.service \
     \
     proc-fs-nfsd.mount \
+    fsidd.service
+
+rpc_pipefs_mount_file = \
     var-lib-nfs-rpc_pipefs.mount
 
 if CONFIG_NFSV4
 unit_files += \
     nfs-idmapd.service
+endif
+
+if CONFIG_NFSV4SERVER
+unit_files += \
+    nfsv4-exportd.service \
+    nfsv4-server.service
 endif
 
 if CONFIG_NFSV41
@@ -36,22 +48,41 @@ unit_files += \
 endif
 endif
 
-EXTRA_DIST = $(unit_files)
+if CONFIG_NFSDCLD
+unit_files += \
+    nfsdcld.service
+endif
 
-unit_dir = /lib/systemd/system
-generator_dir = /lib/systemd/system-generators
+man5_MANS	= nfs.conf.man
+man7_MANS	= nfs.systemd.man
+EXTRA_DIST = $(unit_files) $(udev_files) $(man5_MANS) $(man7_MANS)
 
-EXTRA_PROGRAMS	= nfs-server-generator
+generator_dir = $(unitdir)/../system-generators
+
+EXTRA_PROGRAMS	= nfs-server-generator rpc-pipefs-generator
 genexecdir = $(generator_dir)
+
+COMMON_SRCS = systemd.c systemd.h
+
+nfs_server_generator_SOURCES = $(COMMON_SRCS) nfs-server-generator.c
+
+rpc_pipefs_generator_SOURCES = $(COMMON_SRCS) rpc-pipefs-generator.c
+
 nfs_server_generator_LDADD = ../support/export/libexport.a \
-			     ../support/nfs/libnfs.a \
-			     ../support/misc/libmisc.a
+			     ../support/nfs/libnfs.la \
+			     ../support/misc/libmisc.a \
+			     ../support/reexport/libreexport.a \
+			     $(LIBPTHREAD)
+
+
+rpc_pipefs_generator_LDADD = ../support/nfs/libnfs.la
 
 if INSTALL_SYSTEMD
-genexec_PROGRAMS = nfs-server-generator
-install-data-hook: $(unit_files)
+genexec_PROGRAMS = nfs-server-generator rpc-pipefs-generator
+install-data-hook: $(unit_files) $(udev_files)
 	mkdir -p $(DESTDIR)/$(unitdir)
 	cp $(unit_files) $(DESTDIR)/$(unitdir)
-else
-noinst_PROGRAMS = nfs-server-generator
+	cp $(rpc_pipefs_mount_file) $(DESTDIR)/$(unitdir)/$(rpc_pipefsmount)
+	mkdir -p $(DESTDIR)/$(udev_rulesdir)
+	cp $(udev_files) $(DESTDIR)/$(udev_rulesdir)
 endif

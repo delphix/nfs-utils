@@ -121,14 +121,37 @@
 #include <krb5.h>
 #include <rpc/auth_gss.h>
 
+#include <sys/types.h>
+#include <fcntl.h>
+
+#include "nfslib.h"
 #include "gssd.h"
 #include "err_util.h"
 #include "gss_util.h"
 #include "krb5_util.h"
 
+/*
+ * List of principals from our keytab that we
+ * will try to use to obtain credentials
+ * (known as a principal list entry (ple))
+ */
+struct gssd_k5_kt_princ {
+	struct gssd_k5_kt_princ *next;
+	// Only protect against deletion, not modification
+	int refcount;
+	// Only set during creation in new_ple()
+	krb5_principal princ;
+	char *realm;
+	// Modified during usage by gssd_get_single_krb5_cred()
+	char *ccname;
+	krb5_timestamp endtime;
+};
+
+
 /* Global list of principals/cache file names for machine credentials */
-struct gssd_k5_kt_princ *gssd_k5_kt_princ_list = NULL;
-pthread_mutex_t ple_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct gssd_k5_kt_princ *gssd_k5_kt_princ_list = NULL;
+/* This mutex protects list modification & ple->ccname */
+static pthread_mutex_t ple_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef HAVE_SET_ALLOWABLE_ENCTYPES
 int limit_to_legacy_enctypes = 0;
@@ -142,9 +165,31 @@ static int select_krb5_ccache(const struct dirent *d);
 static int gssd_find_existing_krb5_ccache(uid_t uid, char *dirname,
 		const char **cctype, struct dirent **d);
 static int gssd_get_single_krb5_cred(krb5_context context,
-		krb5_keytab kt, struct gssd_k5_kt_princ *ple, int nocache);
+		krb5_keytab kt, struct gssd_k5_kt_princ *ple, int force_renew);
 static int query_krb5_ccache(const char* cred_cache, char **ret_princname,
 		char **ret_realm);
+
+static void release_ple_locked(krb5_context context,
+			       struct gssd_k5_kt_princ *ple)
+{
+	if (--ple->refcount)
+		return;
+
+	printerr(3, "freeing cached principal (ccname=%s, realm=%s)\n",
+		 ple->ccname, ple->realm);
+	krb5_free_principal(context, ple->princ);
+	free(ple->ccname);
+	free(ple->realm);
+	free(ple);
+}
+
+static void release_ple(krb5_context context, struct gssd_k5_kt_princ *ple)
+{
+	pthread_mutex_lock(&ple_lock);
+	release_ple_locked(context, ple);
+	pthread_mutex_unlock(&ple_lock);
+}
+
 
 /*
  * Called from the scandir function to weed out potential krb5
@@ -188,7 +233,8 @@ gssd_find_existing_krb5_ccache(uid_t uid, char *dirname,
 	int found = 0;
 	struct dirent *best_match_dir = NULL;
 	struct stat best_match_stat, tmp_stat;
-	char buf[1030];
+	/* dirname + cctype + d_name + NULL */
+	char buf[PATH_MAX+5+256+1];
 	char *princname = NULL;
 	char *realm = NULL;
 	int score, best_match_score = 0, err = -EACCES;
@@ -202,39 +248,35 @@ gssd_find_existing_krb5_ccache(uid_t uid, char *dirname,
 			dirname, strerror(errno));
 	}
 	else if (n > 0) {
-		char statname[1024];
 		for (i = 0; i < n; i++) {
-			snprintf(statname, sizeof(statname),
+			snprintf(buf, sizeof(buf),
 				 "%s/%s", dirname, namelist[i]->d_name);
 			printerr(3, "CC '%s' being considered, "
 				 "with preferred realm '%s'\n",
-				 statname, preferred_realm ?
+				 buf, preferred_realm ?
 					preferred_realm : "<none selected>");
-			if (lstat(statname, &tmp_stat)) {
-				printerr(0, "Error doing stat on '%s'\n",
-					 statname);
+			if (lstat(buf, &tmp_stat)) {
+				printerr(0, "Error doing stat on '%s'\n", buf);
 				free(namelist[i]);
 				continue;
 			}
 			/* Only pick caches owned by the user (uid) */
 			if (tmp_stat.st_uid != uid) {
 				printerr(3, "CC '%s' owned by %u, not %u\n",
-					 statname, tmp_stat.st_uid, uid);
+					 buf, tmp_stat.st_uid, uid);
 				free(namelist[i]);
 				continue;
 			}
 			if (!S_ISREG(tmp_stat.st_mode) &&
 			    !S_ISDIR(tmp_stat.st_mode)) {
 				printerr(3, "CC '%s' is not a regular "
-					 "file or directory\n",
-					 statname);
+					 "file or directory\n", buf);
 				free(namelist[i]);
 				continue;
 			}
 			if (uid == 0 && !root_uses_machine_creds && 
 				strstr(namelist[i]->d_name, "machine_")) {
-				printerr(3, "CC '%s' not available to root\n",
-					 statname);
+				printerr(3, "CC '%s' not available to root\n", buf);
 				free(namelist[i]);
 				continue;
 			}
@@ -317,6 +359,25 @@ gssd_find_existing_krb5_ccache(uid_t uid, char *dirname,
 	return err;
 }
 
+/* check if the ticket cache exists, if not set nocache=1 so that new
+ * tgt is gotten
+ */
+static int
+gssd_check_if_cc_exists(struct gssd_k5_kt_princ *ple)
+{
+	int fd;
+	char cc_name[BUFSIZ];
+
+	snprintf(cc_name, sizeof(cc_name), "%s/%s%s_%s",
+		ccachesearch[0], GSSD_DEFAULT_CRED_PREFIX,
+		GSSD_DEFAULT_MACHINE_CRED_SUFFIX, ple->realm);
+	fd = open(cc_name, O_RDONLY);
+	if (fd < 0)
+		return 1;
+	close(fd);
+	return 0;
+}
+
 /*
  * Obtain credentials via a key in the keytab given
  * a keytab handle and a gssd_k5_kt_princ structure.
@@ -331,9 +392,9 @@ static int
 gssd_get_single_krb5_cred(krb5_context context,
 			  krb5_keytab kt,
 			  struct gssd_k5_kt_princ *ple,
-			  int nocache)
+			  int force_renew)
 {
-#if HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
+#ifdef HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
 	krb5_get_init_creds_opt *init_opts = NULL;
 #else
 	krb5_get_init_creds_opt options;
@@ -348,20 +409,27 @@ gssd_get_single_krb5_cred(krb5_context context,
 	char *cache_type;
 	char *pname = NULL;
 	char *k5err = NULL;
+	int nocache = 0;
+	pthread_t tid = pthread_self();
 
 	memset(&my_creds, 0, sizeof(my_creds));
 
+	if (!use_memcache)
+		nocache = gssd_check_if_cc_exists(ple);
 	/*
 	 * Workaround for clock skew among NFS server, NFS client and KDC
 	 * 300 because clock skew must be within 300sec for kerberos
 	 */
 	now += 300;
-	if (ple->ccname && ple->endtime > now && !nocache) {
-		printerr(3, "INFO: Credentials in CC '%s' are good until %d\n",
-			 ple->ccname, ple->endtime);
+	pthread_mutex_lock(&ple_lock);
+	if (ple->ccname && ple->endtime > now && !nocache && !force_renew) {
+		printerr(3, "%s(0x%lx): Credentials in CC '%s' are good until %s",
+			 __func__, tid, ple->ccname, ctime((time_t *)&ple->endtime));
 		code = 0;
+		pthread_mutex_unlock(&ple_lock);
 		goto out;
 	}
+	pthread_mutex_unlock(&ple_lock);
 
 	if ((code = krb5_kt_get_name(context, kt, kt_name, BUFSIZ))) {
 		printerr(0, "ERROR: Unable to get keytab name in "
@@ -372,7 +440,7 @@ gssd_get_single_krb5_cred(krb5_context context,
 	if ((krb5_unparse_name(context, ple->princ, &pname)))
 		pname = NULL;
 
-#if HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
+#ifdef HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
 	code = krb5_get_init_creds_opt_alloc(context, &init_opts);
 	if (code) {
 		k5err = gssd_k5_err_msg(context, code);
@@ -414,6 +482,7 @@ gssd_get_single_krb5_cred(krb5_context context,
 	 * Initialize cache file which we're going to be using
 	 */
 
+	pthread_mutex_lock(&ple_lock);
 	if (use_memcache)
 	    cache_type = "MEMORY";
 	else
@@ -423,15 +492,18 @@ gssd_get_single_krb5_cred(krb5_context context,
 		ccachesearch[0], GSSD_DEFAULT_CRED_PREFIX,
 		GSSD_DEFAULT_MACHINE_CRED_SUFFIX, ple->realm);
 	ple->endtime = my_creds.times.endtime;
-	if (ple->ccname != NULL)
+	if (ple->ccname == NULL || strcmp(ple->ccname, cc_name) != 0) {
 		free(ple->ccname);
-	ple->ccname = strdup(cc_name);
-	if (ple->ccname == NULL) {
-		printerr(0, "ERROR: no storage to duplicate credentials "
-			    "cache name '%s'\n", cc_name);
-		code = ENOMEM;
-		goto out;
+		ple->ccname = strdup(cc_name);
+		if (ple->ccname == NULL) {
+			printerr(0, "ERROR: no storage to duplicate credentials "
+				    "cache name '%s'\n", cc_name);
+			code = ENOMEM;
+			pthread_mutex_unlock(&ple_lock);
+			goto out;
+		}
 	}
+	pthread_mutex_unlock(&ple_lock);
 	if ((code = krb5_cc_resolve(context, cc_name, &ccache))) {
 		k5err = gssd_k5_err_msg(context, code);
 		printerr(0, "ERROR: %s while opening credential cache '%s'\n",
@@ -452,9 +524,10 @@ gssd_get_single_krb5_cred(krb5_context context,
 	}
 
 	code = 0;
-	printerr(2, "%s: principal '%s' ccache:'%s'\n", __func__, pname, cc_name);
+	printerr(2, "%s(0x%lx): principal '%s' ccache:'%s'\n", 
+		__func__, tid, pname, cc_name);
   out:
-#if HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
+#ifdef HAVE_KRB5_GET_INIT_CREDS_OPT_SET_ADDRESSLESS
 	if (init_opts)
 		krb5_get_init_creds_opt_free(context, init_opts);
 #endif
@@ -469,6 +542,7 @@ gssd_get_single_krb5_cred(krb5_context context,
 
 /*
  * Given a principal, find a matching ple structure
+ * Called with mutex held
  */
 static struct gssd_k5_kt_princ *
 find_ple_by_princ(krb5_context context, krb5_principal princ)
@@ -485,6 +559,7 @@ find_ple_by_princ(krb5_context context, krb5_principal princ)
 
 /*
  * Create, initialize, and add a new ple structure to the global list
+ * Called with mutex held
  */
 static struct gssd_k5_kt_princ *
 new_ple(krb5_context context, krb5_principal princ)
@@ -536,6 +611,7 @@ new_ple(krb5_context context, krb5_principal princ)
 			p->next = ple;
 	}
 
+	ple->refcount = 1;
 	return ple;
 outerr:
 	if (ple) {
@@ -554,12 +630,13 @@ get_ple_by_princ(krb5_context context, krb5_principal princ)
 {
 	struct gssd_k5_kt_princ *ple;
 
-	/* Need to serialize list if we ever become multi-threaded! */
-
 	pthread_mutex_lock(&ple_lock);
 	ple = find_ple_by_princ(context, princ);
 	if (ple == NULL) {
 		ple = new_ple(context, princ);
+	}
+	if (ple != NULL) {
+		ple->refcount++;
 	}
 	pthread_mutex_unlock(&ple_lock);
 
@@ -577,6 +654,7 @@ get_full_hostname(const char *inhost, char *outhost, int outhostlen)
 	struct addrinfo hints;
 	int retval;
 	char *c;
+	pthread_t tid = pthread_self();
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_socktype = SOCK_STREAM;
@@ -586,16 +664,19 @@ get_full_hostname(const char *inhost, char *outhost, int outhostlen)
 	/* Get full target hostname */
 	retval = getaddrinfo(inhost, NULL, &hints, &addrs);
 	if (retval) {
-		printerr(1, "%s while getting full hostname for '%s'\n",
-			 gai_strerror(retval), inhost);
+		printerr(1, "%s(0x%lx): getaddrinfo(%s) failed: %s\n",
+			 __func__, tid, inhost, gai_strerror(retval));
 		goto out;
 	}
 	strncpy(outhost, addrs->ai_canonname, outhostlen);
-	freeaddrinfo(addrs);
+	nfs_freeaddrinfo(addrs);
 	for (c = outhost; *c != '\0'; c++)
 	    *c = tolower(*c);
 
-	printerr(3, "Full hostname for '%s' is '%s'\n", inhost, outhost);
+	if (get_verbosity() && strcmp(inhost, outhost))
+		printerr(1, "%s(0x%0lx): inhost '%s' different than outhost '%s'\n", 
+			 __func__, tid, inhost, outhost);
+
 	retval = 0;
 out:
 	return retval;
@@ -694,6 +775,7 @@ gssd_search_krb5_keytab(krb5_context context, krb5_keytab kt,
 		goto out;
 	}
 
+	printerr(4, "Scanning keytab for %s/*@%s\n", service, realm);
 	while ((code = krb5_kt_next_entry(context, kt, kte, &cursor)) == 0) {
 		if ((code = krb5_unparse_name(context, kte->principal,
 					      &pname))) {
@@ -702,6 +784,8 @@ gssd_search_krb5_keytab(krb5_context context, krb5_keytab kt,
 				 "we failed to unparse principal name: %s\n",
 				 k5err);
 			k5_free_kt_entry(context, kte);
+			free(k5err);
+			k5err = NULL;
 			continue;
 		}
 		printerr(4, "Processing keytab entry for principal '%s'\n",
@@ -723,6 +807,8 @@ gssd_search_krb5_keytab(krb5_context context, krb5_keytab kt,
 				retval = ENOMEM;
 				k5_free_kt_entry(context, kte);
 			} else {
+				release_ple(context, ple);
+				ple = NULL;
 				retval = 0;
 				*found = 1;
 			}
@@ -761,7 +847,8 @@ gssd_search_krb5_keytab(krb5_context context, krb5_keytab kt,
  * the server hostname.
  */
 static int
-find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
+find_keytab_entry(krb5_context context, krb5_keytab kt,
+		  const char *srchost, const char *tgtname,
 		  krb5_keytab_entry *kte, const char **svcnames)
 {
 	krb5_error_code code;
@@ -775,7 +862,8 @@ find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
 	int tried_all = 0, tried_default = 0, tried_upper = 0;
 	krb5_principal princ;
 	const char *notsetstr = "not set";
-	char *adhostoverride;
+	char *adhostoverride = NULL;
+	pthread_t tid = pthread_self();
 
 
 	/* Get full target hostname */
@@ -785,37 +873,43 @@ find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
 		goto out;
 
 	/* Get full local hostname */
-	if (gethostname(myhostname, sizeof(myhostname)) == -1) {
-		retval = errno;
-		k5err = gssd_k5_err_msg(context, retval);
-		printerr(1, "%s while getting local hostname\n", k5err);
-		goto out;
+	if (srchost) {
+		strcpy(myhostname, srchost);
+	        strcpy(myhostad, myhostname);
+	} else {
+		/* Borrow myhostad for gethostname(), we need it later anyways */
+		if (gethostname(myhostad, sizeof(myhostad)-1) == -1) {
+			retval = errno;
+			k5err = gssd_k5_err_msg(context, retval);
+			printerr(1, "%s while getting local hostname\n", k5err);
+			goto out;
+		}
+		retval = get_full_hostname(myhostad, myhostname, sizeof(myhostname));
+		if (retval) {
+			/* Don't use myhostname */
+			myhostname[0] = 0;
+		}
 	}
 
 	/* Compute the active directory machine name HOST$ */
-	krb5_appdefault_string(context, "nfs", NULL, "ad_principal_name", 
+	krb5_appdefault_string(context, "nfs", NULL, "ad_principal_name",
 		notsetstr, &adhostoverride);
-	if (strcmp(adhostoverride, notsetstr) != 0) {
-	        printerr (1, 
-				"AD host string overridden with \"%s\" from appdefaults\n", 
-				adhostoverride);
-	        /* No overflow: Windows cannot handle strings longer than 19 chars */
-	        strcpy(myhostad, adhostoverride);
-		free(adhostoverride);
+	if (adhostoverride && strcmp(adhostoverride, notsetstr) != 0) {
+		printerr(1,
+			 "AD host string overridden with \"%s\" from appdefaults\n",
+			 adhostoverride);
+		/* No overflow: Windows cannot handle strings longer than 19 chars */
+		strcpy(myhostad, adhostoverride);
 	} else {
-	        strcpy(myhostad, myhostname);
-	        for (i = 0; myhostad[i] != 0; ++i) {
-	          if (myhostad[i] == '.') break;
-	        }
-	        myhostad[i] = '$';
-	        myhostad[i+1] = 0;
+		/* In this case, it's been pre-filled above */
+		for (i = 0; myhostad[i] != 0; ++i) {
+			if (myhostad[i] == '.') break;
+		}
+		myhostad[i] = '$';
+		myhostad[i+1] = 0;
 	}
-
-	retval = get_full_hostname(myhostname, myhostname, sizeof(myhostname));
-	if (retval) {
-		/* Don't use myhostname */
-		myhostname[0] = 0;
-	}
+	if (adhostoverride)
+		krb5_free_string(context, adhostoverride);
 
 	code = krb5_get_default_realm(context, &default_realm);
 	if (code) {
@@ -865,7 +959,7 @@ find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
 		if (strcmp(realm, default_realm) == 0)
 			tried_default = 1;
 		for (j = 0; svcnames[j] != NULL; j++) {
-			char spn[300];
+			char spn[NI_MAXHOST+2];
 
 			/*
 			 * The special svcname "$" means 'try the active
@@ -898,6 +992,8 @@ find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
 				k5err = gssd_k5_err_msg(context, code);
 				printerr(1, "%s while building principal for '%s'\n",
 					 k5err, spn);
+				free(k5err);
+				k5err = NULL;
 				continue;
 			}
 			code = krb5_kt_get_entry(context, kt, princ, 0, 0, kte);
@@ -906,6 +1002,8 @@ find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
 				k5err = gssd_k5_err_msg(context, code);
 				printerr(3, "%s while getting keytab entry for '%s'\n",
 					 k5err, spn);
+				free(k5err);
+				k5err = NULL;
 				/*
 				 * We tried the active directory machine account
 				 * with the hostname part as-is and failed...
@@ -920,7 +1018,7 @@ find_keytab_entry(krb5_context context, krb5_keytab kt, const char *tgtname,
 					tried_upper = 1;
 				}
 			} else {
-				printerr(3, "Success getting keytab entry for '%s'\n",spn);
+				printerr(2, "find_keytab_entry(0x%lx): Success getting keytab entry for '%s'\n",tid, spn);
 				retval = 0;
 				goto out;
 			}
@@ -1008,6 +1106,8 @@ query_krb5_ccache(const char* cred_cache, char **ret_princname,
 	char *str = NULL;
 	char *princstring;
 
+	*ret_princname = *ret_realm = NULL;
+
 	ret = krb5_init_context(&context);
 	if (ret) 
 		return 0;
@@ -1030,10 +1130,14 @@ query_krb5_ccache(const char* cred_cache, char **ret_princname,
 			    *str = '\0';
 			    *ret_princname = strdup(princstring);
 			    *ret_realm = strdup(str+1);
+			    if (!*ret_princname || !*ret_realm) {
+				    free(*ret_princname);
+				    free(*ret_realm);
+				    *ret_princname = NULL;
+				    *ret_realm = NULL;
+			    }
 		    }
 		    k5_free_unparsed_name(context, princstring);
-		} else {
-			found = 0;
 		}
 	}
 	krb5_free_principal(context, principal);
@@ -1042,7 +1146,93 @@ err_princ:
 	krb5_cc_close(context, ccache);
 err_cache:
 	krb5_free_context(context);
-	return found;
+	return (*ret_princname && *ret_realm);
+}
+
+/*
+ * Obtain (or refresh if necessary) Kerberos machine credentials
+ * If a ple is passed in, it's reference will be released
+ */
+static int
+gssd_refresh_krb5_machine_credential_internal(char *hostname,
+				     struct gssd_k5_kt_princ *ple,
+				     char *service, char *srchost,
+				     int force_renew)
+{
+	krb5_error_code code = 0;
+	krb5_context context;
+	krb5_keytab kt = NULL;;
+	int retval = 0;
+	char *k5err = NULL;
+	const char *svcnames[] = { "$", "root", "nfs", "host", NULL };
+
+	/*
+	 * If a specific service name was specified, use it.
+	 * Otherwise, use the default list.
+	 */
+	if (service != NULL && strcmp(service, "*") != 0) {
+		svcnames[0] = service;
+		svcnames[1] = NULL;
+	}
+	if (hostname == NULL && ple == NULL) {
+		printerr(0, "ERROR: %s: Invalid args\n", __func__);
+		return EINVAL;
+	}
+	code = krb5_init_context(&context);
+	if (code) {
+		k5err = gssd_k5_err_msg(NULL, code);
+		printerr(0, "ERROR: %s: %s while initializing krb5 context\n",
+			 __func__, k5err);
+		retval = code;
+		goto out;
+	}
+
+	if ((code = krb5_kt_resolve(context, keytabfile, &kt))) {
+		k5err = gssd_k5_err_msg(context, code);
+		printerr(0, "ERROR: %s: %s while resolving keytab '%s'\n",
+			 __func__, k5err, keytabfile);
+		goto out_free_context;
+	}
+
+	if (ple == NULL) {
+		krb5_keytab_entry kte;
+
+		code = find_keytab_entry(context, kt, srchost, hostname,
+					 &kte, svcnames);
+		if (code) {
+			printerr(0, "ERROR: %s: no usable keytab entry found "
+				 "in keytab %s for connection with host %s\n",
+				 __FUNCTION__, keytabfile, hostname);
+			retval = code;
+			goto out_free_kt;
+		}
+
+		ple = get_ple_by_princ(context, kte.principal);
+		k5_free_kt_entry(context, &kte);
+		if (ple == NULL) {
+			char *pname;
+			if ((krb5_unparse_name(context, kte.principal, &pname))) {
+				pname = NULL;
+			}
+			printerr(0, "ERROR: %s: Could not locate or create "
+				 "ple struct for principal %s for connection "
+				 "with host %s\n",
+				 __FUNCTION__, pname ? pname : "<unparsable>",
+				 hostname);
+			if (pname) k5_free_unparsed_name(context, pname);
+			goto out_free_kt;
+		}
+	}
+	retval = gssd_get_single_krb5_cred(context, kt, ple, force_renew);
+out_free_kt:
+	krb5_kt_close(context, kt);
+out_free_context:
+	if (ple)
+		release_ple(context, ple);
+	krb5_free_context(context);
+out:
+	free(k5err);
+	return retval;
 }
 
 /*==========================*/
@@ -1059,7 +1249,8 @@ err_cache:
 int
 gssd_setup_krb5_user_gss_ccache(uid_t uid, char *servername, char *dirpattern)
 {
-	char			buf[MAX_NETOBJ_SZ], dirname[PATH_MAX];
+				/* dirname + cctype + d_name + NULL */
+	char			buf[PATH_MAX+5+256+1], dirname[PATH_MAX];
 	const char		*cctype;
 	struct dirent		*d;
 	int			err, i, j;
@@ -1138,36 +1329,60 @@ gssd_get_krb5_machine_cred_list(char ***list)
 		goto out;
 	}
 
-	/* Need to serialize list if we ever become multi-threaded! */
-
+	pthread_mutex_lock(&ple_lock);
 	for (ple = gssd_k5_kt_princ_list; ple; ple = ple->next) {
-		if (ple->ccname) {
-			/* Make sure cred is up-to-date before returning it */
-			retval = gssd_refresh_krb5_machine_credential(NULL, ple,
-				NULL);
-			if (retval)
-				continue;
-			if (i + 1 > listsize) {
-				listsize += listinc;
-				l = (char **)
-					realloc(l, listsize * sizeof(char *));
-				if (l == NULL) {
-					retval = ENOMEM;
-					goto out;
-				}
-			}
-			if ((l[i++] = strdup(ple->ccname)) == NULL) {
+		if (!ple->ccname)
+			continue;
+
+		/* Take advantage of the fact we only remove the ple
+		 * from the list during shutdown. If it's modified
+		 * concurrently at worst we'll just miss a new entry
+		 * before the current ple
+		 *
+		 * gssd_refresh_krb5_machine_credential_internal() will
+		 * release the ple refcount
+		 */
+		ple->refcount++;
+		pthread_mutex_unlock(&ple_lock);
+		/* Make sure cred is up-to-date before returning it */
+		retval = gssd_refresh_krb5_machine_credential_internal(NULL, ple,
+								       NULL, NULL, 0);
+		pthread_mutex_lock(&ple_lock);
+		if (gssd_k5_kt_princ_list == NULL) {
+			/* Looks like we did shutdown... abort */
+			l[i] = NULL;
+			gssd_free_krb5_machine_cred_list(l);
+			retval = ENOMEM;
+			goto out_lock;
+		}
+		if (retval)
+			continue;
+		if (i + 1 > listsize) {
+			char **tmplist;
+			listsize += listinc;
+			tmplist = (char **)
+				realloc(l, listsize * sizeof(char *));
+			if (tmplist == NULL) {
+				gssd_free_krb5_machine_cred_list(l);
 				retval = ENOMEM;
-				goto out;
+				goto out_lock;
 			}
+			l = tmplist;
+		}
+		if ((l[i++] = strdup(ple->ccname)) == NULL) {
+			gssd_free_krb5_machine_cred_list(l);
+			retval = ENOMEM;
+			goto out_lock;
 		}
 	}
 	if (i > 0) {
 		l[i] = NULL;
 		*list = l;
 		retval = 0;
-		goto out;
-	}
+	} else
+		free((void *)l);
+out_lock:
+	pthread_mutex_unlock(&ple_lock);
   out:
 	return retval;
 }
@@ -1192,7 +1407,7 @@ gssd_free_krb5_machine_cred_list(char **list)
  * Called upon exit.  Destroys machine credentials.
  */
 void
-gssd_destroy_krb5_machine_creds(void)
+gssd_destroy_krb5_principals(int destroy_machine_creds)
 {
 	krb5_context context;
 	krb5_error_code code = 0;
@@ -1204,29 +1419,38 @@ gssd_destroy_krb5_machine_creds(void)
 	if (code) {
 		k5err = gssd_k5_err_msg(NULL, code);
 		printerr(0, "ERROR: %s while initializing krb5\n", k5err);
-		goto out;
+		free(k5err);
+		return;
 	}
 
-	for (ple = gssd_k5_kt_princ_list; ple; ple = ple->next) {
-		if (!ple->ccname)
-			continue;
-		if ((code = krb5_cc_resolve(context, ple->ccname, &ccache))) {
-			k5err = gssd_k5_err_msg(context, code);
-			printerr(0, "WARNING: %s while resolving credential "
-				    "cache '%s' for destruction\n", k5err,
-				    ple->ccname);
-			continue;
+	pthread_mutex_lock(&ple_lock);
+	while (gssd_k5_kt_princ_list) {
+		ple = gssd_k5_kt_princ_list;
+		gssd_k5_kt_princ_list = ple->next;
+
+		if (destroy_machine_creds && ple->ccname) {
+			if ((code = krb5_cc_resolve(context, ple->ccname, &ccache))) {
+				k5err = gssd_k5_err_msg(context, code);
+				printerr(0, "WARNING: %s while resolving credential "
+					    "cache '%s' for destruction\n", k5err,
+					    ple->ccname);
+				free(k5err);
+				k5err = NULL;
+			}
+
+			if (!code && (code = krb5_cc_destroy(context, ccache))) {
+				k5err = gssd_k5_err_msg(context, code);
+				printerr(0, "WARNING: %s while destroying credential "
+					    "cache '%s'\n", k5err, ple->ccname);
+				free(k5err);
+				k5err = NULL;
+			}
 		}
 
-		if ((code = krb5_cc_destroy(context, ccache))) {
-			k5err = gssd_k5_err_msg(context, code);
-			printerr(0, "WARNING: %s while destroying credential "
-				    "cache '%s'\n", k5err, ple->ccname);
-		}
+		release_ple_locked(context, ple);
 	}
+	pthread_mutex_unlock(&ple_lock);
 	krb5_free_context(context);
-  out:
-	free(k5err);
 }
 
 /*
@@ -1234,79 +1458,12 @@ gssd_destroy_krb5_machine_creds(void)
  */
 int
 gssd_refresh_krb5_machine_credential(char *hostname,
-				     struct gssd_k5_kt_princ *ple, 
-					 char *service)
+				     char *service, char *srchost,
+				     int force_renew)
 {
-	krb5_error_code code = 0;
-	krb5_context context;
-	krb5_keytab kt = NULL;;
-	int retval = 0;
-	char *k5err = NULL;
-	const char *svcnames[] = { "$", "root", "nfs", "host", NULL };
-
-	/*
-	 * If a specific service name was specified, use it.
-	 * Otherwise, use the default list.
-	 */
-	if (service != NULL && strcmp(service, "*") != 0) {
-		svcnames[0] = service;
-		svcnames[1] = NULL;
-	}
-	if (hostname == NULL && ple == NULL)
-		return EINVAL;
-
-	code = krb5_init_context(&context);
-	if (code) {
-		k5err = gssd_k5_err_msg(NULL, code);
-		printerr(0, "ERROR: %s: %s while initializing krb5 context\n",
-			 __func__, k5err);
-		retval = code;
-		goto out;
-	}
-
-	if ((code = krb5_kt_resolve(context, keytabfile, &kt))) {
-		k5err = gssd_k5_err_msg(context, code);
-		printerr(0, "ERROR: %s: %s while resolving keytab '%s'\n",
-			 __func__, k5err, keytabfile);
-		goto out_free_context;
-	}
-
-	if (ple == NULL) {
-		krb5_keytab_entry kte;
-
-		code = find_keytab_entry(context, kt, hostname, &kte, svcnames);
-		if (code) {
-			printerr(0, "ERROR: %s: no usable keytab entry found "
-				 "in keytab %s for connection with host %s\n",
-				 __FUNCTION__, keytabfile, hostname);
-			retval = code;
-			goto out_free_kt;
-		}
-
-		ple = get_ple_by_princ(context, kte.principal);
-		k5_free_kt_entry(context, &kte);
-		if (ple == NULL) {
-			char *pname;
-			if ((krb5_unparse_name(context, kte.principal, &pname))) {
-				pname = NULL;
-			}
-			printerr(0, "ERROR: %s: Could not locate or create "
-				 "ple struct for principal %s for connection "
-				 "with host %s\n",
-				 __FUNCTION__, pname ? pname : "<unparsable>",
-				 hostname);
-			if (pname) k5_free_unparsed_name(context, pname);
-			goto out_free_kt;
-		}
-	}
-	retval = gssd_get_single_krb5_cred(context, kt, ple, 0);
-out_free_kt:
-	krb5_kt_close(context, kt);
-out_free_context:
-	krb5_free_context(context);
-out:
-	free(k5err);
-	return retval;
+    return gssd_refresh_krb5_machine_credential_internal(hostname, NULL,
+							 service, srchost,
+							 force_renew);
 }
 
 /*
@@ -1394,6 +1551,48 @@ gssd_acquire_user_cred(gss_cred_id_t *gss_cred)
 	}
 
 	return ret;
+}
+
+/* Removed a service ticket for nfs/<name> from the ticket cache
+ */
+int
+gssd_k5_remove_bad_service_cred(char *name)
+{
+        krb5_creds in_creds, out_creds;
+        krb5_error_code ret;
+        krb5_context context;
+        krb5_ccache cache;
+        krb5_principal principal;
+        int retflags = KRB5_TC_MATCH_SRV_NAMEONLY;
+        char srvname[1024];
+
+        ret = krb5_init_context(&context);
+        if (ret)
+                goto out_cred;
+        ret = krb5_cc_default(context, &cache);
+        if (ret)
+                goto out_free_context;
+        ret = krb5_cc_get_principal(context, cache, &principal);
+        if (ret)
+                goto out_close_cache;
+        memset(&in_creds, 0, sizeof(in_creds));
+        in_creds.client = principal;
+        sprintf(srvname, "nfs/%s", name);
+        ret = krb5_parse_name(context, srvname, &in_creds.server);
+        if (ret)
+                goto out_free_principal;
+        ret = krb5_cc_retrieve_cred(context, cache, retflags, &in_creds, &out_creds);
+        if (ret)
+                goto out_free_principal;
+        ret = krb5_cc_remove_cred(context, cache, 0, &out_creds);
+out_free_principal:
+        krb5_free_principal(context, principal);
+out_close_cache:
+        krb5_cc_close(context, cache);
+out_free_context:
+        krb5_free_context(context);
+out_cred:
+        return ret;
 }
 
 #ifdef HAVE_SET_ALLOWABLE_ENCTYPES

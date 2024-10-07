@@ -1,0 +1,19 @@
+Description: add missing svcgssd long options to nfs.conf(5)
+Author: Andreas Hasenack <andreas@canonical.com>
+Forwarded: https://marc.info/?l=linux-nfs&m=165635622607689&w=4
+Last-Update: 2022-06-27
+
+--- a/systemd/nfs.conf.man
++++ b/systemd/nfs.conf.man
+@@ -283,7 +283,10 @@
+ .TP
+ .B svcgssd
+ Recognized values:
+-.BR principal .
++.BR principal ,
++.BR verbosity ,
++.BR rpc-verbosity ,
++.BR idmap-verbosity .
+ 
+ See
+ .BR rpc.svcgssd (8)

@@ -80,9 +80,24 @@
 #include "nfslib.h"
 #include "gss_names.h"
 
+extern pthread_mutex_t clp_lock;
+extern pthread_mutex_t active_thread_list_lock;
+extern int upcall_timeout;
+extern TAILQ_HEAD(active_thread_list_head, upcall_thread_info) active_thread_list;
+
 /* Encryption types supported by the kernel rpcsec_gss code */
 int num_krb5_enctypes = 0;
 krb5_enctype *krb5_enctypes = NULL;
+
+/* Args for the cleanup_handler() */
+struct cleanup_args  {
+	OM_uint32 	*min_stat;
+	gss_buffer_t	acceptor;
+	gss_buffer_t	token;
+	struct authgss_private_data *pd;
+	AUTH		**auth;
+	CLIENT		**rpc_clnt;
+};
 
 /*
  * Parse the supported encryption type information
@@ -149,9 +164,11 @@ do_downcall(int k5_fd, uid_t uid, struct authgss_private_data *pd,
 	char    *buf = NULL, *p = NULL, *end = NULL;
 	unsigned int timeout = context_timeout;
 	unsigned int buf_size = 0;
+	pthread_t tid = pthread_self();
 
-	printerr(2, "doing downcall: lifetime_rec=%u acceptor=%.*s\n",
-		lifetime_rec, acceptor->length, acceptor->value);
+	if (get_verbosity() > 1)
+		printerr(2, "do_downcall(0x%lx): lifetime_rec=%s acceptor=%.*s\n",
+			tid, sec2time(lifetime_rec), acceptor->length, acceptor->value);
 	buf_size = sizeof(uid) + sizeof(timeout) + sizeof(pd->pd_seq_win) +
 		sizeof(pd->pd_ctx_hndl.length) + pd->pd_ctx_hndl.length +
 		sizeof(context_token->length) + context_token->length +
@@ -177,19 +194,20 @@ do_downcall(int k5_fd, uid_t uid, struct authgss_private_data *pd,
 	return;
 out_err:
 	free(buf);
-	printerr(1, "Failed to write downcall!\n");
+	printerr(1, "do_downcall(0x%lx): Failed to write downcall!\n", tid);
 	return;
 }
 
-static int
+int
 do_error_downcall(int k5_fd, uid_t uid, int err)
 {
 	char	buf[1024];
 	char	*p = buf, *end = buf + 1024;
 	unsigned int timeout = 0;
 	int	zero = 0;
+	pthread_t tid = pthread_self();
 
-	printerr(2, "doing error downcall\n");
+	printerr(2, "do_error_downcall(0x%lx): uid %d err %d\n", tid, uid, err);
 
 	if (WRITE_BYTES(&p, end, uid)) goto out_err;
 	if (WRITE_BYTES(&p, end, timeout)) goto out_err;
@@ -231,7 +249,7 @@ populate_port(struct sockaddr *sa, const socklen_t salen,
 	switch (sa->sa_family) {
 	case AF_INET:
 		if (s4->sin_port != 0) {
-			printerr(2, "DEBUG: port already set to %d\n",
+			printerr(4, "DEBUG: port already set to %d\n",
 				 ntohs(s4->sin_port));
 			return 1;
 		}
@@ -239,7 +257,7 @@ populate_port(struct sockaddr *sa, const socklen_t salen,
 #ifdef IPV6_SUPPORTED
 	case AF_INET6:
 		if (s6->sin6_port != 0) {
-			printerr(2, "DEBUG: port already set to %d\n",
+			printerr(4, "DEBUG: port already set to %d\n",
 				 ntohs(s6->sin6_port));
 			return 1;
 		}
@@ -312,6 +330,7 @@ create_auth_rpc_client(struct clnt_info *clp,
 	struct timeval	timeout;
 	struct sockaddr		*addr = (struct sockaddr *) &clp->addr;
 	socklen_t		salen;
+	pthread_t tid = pthread_self();
 
 	sec.qop = GSS_C_QOP_DEFAULT;
 	sec.svc = RPCSEC_GSS_SVC_NONE;
@@ -345,8 +364,8 @@ create_auth_rpc_client(struct clnt_info *clp,
 
 	/* create an rpc connection to the nfs server */
 
-	printerr(2, "creating %s client for server %s\n", clp->protocol,
-			clp->servername);
+	printerr(3, "create_auth_rpc_client(0x%lx): creating %s client for server %s\n", 
+		tid, clp->protocol, clp->servername);
 
 	protocol = IPPROTO_TCP;
 	if ((strcmp(clp->protocol, "udp")) == 0)
@@ -389,16 +408,33 @@ create_auth_rpc_client(struct clnt_info *clp,
 	if (!tgtname)
 		tgtname = clp->servicename;
 
-	printerr(2, "creating context with server %s\n", tgtname);
+	printerr(3, "create_auth_rpc_client(0x%lx): creating context with server %s\n", 
+		tid, tgtname);
 	auth = authgss_create_default(rpc_clnt, tgtname, &sec);
 	if (!auth) {
+		if (sec.minor_status == KRB5KRB_AP_ERR_BAD_INTEGRITY) {
+			printerr(2, "WARNING: server=%s failed context "
+				 "creation with KRB5_AP_ERR_BAD_INTEGRITY\n",
+				 clp->servername);
+			if (cred == GSS_C_NO_CREDENTIAL)
+				retval = gssd_refresh_krb5_machine_credential(clp->servername,
+					"*", NULL, 1);
+			else
+				retval = gssd_k5_remove_bad_service_cred(clp->servername);
+			if (!retval) {
+				auth = authgss_create_default(rpc_clnt, tgtname,
+						&sec);
+				if (auth)
+					goto success;
+			}
+		}
 		/* Our caller should print appropriate message */
 		printerr(2, "WARNING: Failed to create krb5 context for "
 			    "user with uid %d for server %s\n",
 			 uid, tgtname);
 		goto out_fail;
 	}
-
+success:
 	/* Success !!! */
 	rpc_clnt->cl_auth = auth;
 	*clnt_return = rpc_clnt;
@@ -437,7 +473,11 @@ change_identity(uid_t uid)
 	int res;
 
 	/* drop list of supplimentary groups first */
+#ifdef __NR_setgroups32
+	if (syscall(SYS_setgroups32, 0, 0) != 0) {
+#else
 	if (syscall(SYS_setgroups, 0, 0) != 0) {
+#endif
 		printerr(0, "WARNING: unable to drop supplimentary groups!");
 		return errno;
 	}
@@ -483,7 +523,7 @@ change_identity(uid_t uid)
 	return 0;
 }
 
-AUTH *
+static AUTH *
 krb5_not_machine_creds(struct clnt_info *clp, uid_t uid, char *tgtname,
 			int *downcall_err, int *chg_err, CLIENT **rpc_clnt)
 {
@@ -491,9 +531,10 @@ krb5_not_machine_creds(struct clnt_info *clp, uid_t uid, char *tgtname,
 	gss_cred_id_t	gss_cred;
 	char		**dname;
 	int		err, resp = -1;
+	pthread_t tid = pthread_self();
 
-	printerr(2, "krb5_not_machine_creds: uid %d tgtname %s\n", 
-		uid, tgtname);
+	printerr(2, "krb5_not_machine_creds(0x%lx): uid %d tgtname %s\n", 
+		tid, uid, tgtname);
 
 	*chg_err = change_identity(uid);
 	if (*chg_err) {
@@ -529,22 +570,24 @@ out:
 	return auth;
 }
 
-AUTH *
-krb5_use_machine_creds(struct clnt_info *clp, uid_t uid, char *tgtname,
-		    char *service, CLIENT **rpc_clnt)
+static AUTH *
+krb5_use_machine_creds(struct clnt_info *clp, uid_t uid,
+		       char *srchost, char *tgtname, char *service,
+		       CLIENT **rpc_clnt)
 {
 	AUTH	*auth = NULL;
 	char	**credlist = NULL;
 	char	**ccname;
 	int	nocache = 0;
 	int	success = 0;
+	pthread_t tid = pthread_self();
 
-	printerr(2, "krb5_use_machine_creds: uid %d tgtname %s\n", 
-		uid, tgtname);
+	printerr(2, "krb5_use_machine_creds(0x%lx): uid %d tgtname %s\n", 
+		tid, uid, tgtname);
 
 	do {
-		gssd_refresh_krb5_machine_credential(clp->servername, NULL,
-						service);
+		gssd_refresh_krb5_machine_credential(clp->servername,
+						     service, srchost, 0);
 	/*
 	 * Get a list of credential cache names and try each
 	 * of them until one works or we've tried them all
@@ -600,27 +643,66 @@ out:
 }
 
 /*
- * this code uses the userland rpcsec gss library to create a krb5
- * context on behalf of the kernel
+ * cleanup_handler:
+ *
+ * Free any resources allocated by process_krb5_upcall().
+ *
+ * Runs upon normal termination of process_krb5_upcall as well as if the
+ * thread is canceled.
  */
 static void
-process_krb5_upcall(struct clnt_info *clp, uid_t uid, int fd, char *tgtname,
-		    char *service)
+cleanup_handler(void *arg)
 {
+	struct cleanup_args *args = (struct cleanup_args *)arg;
+
+	gss_release_buffer(args->min_stat, args->acceptor);
+	if (args->token->value)
+		free(args->token->value);
+#ifdef HAVE_AUTHGSS_FREE_PRIVATE_DATA
+	if (args->pd->pd_ctx_hndl.length != 0 || args->pd->pd_ctx != 0)
+		authgss_free_private_data(args->pd);
+#endif
+	if (*args->auth)
+		AUTH_DESTROY(*args->auth);
+	if (*args->rpc_clnt)
+		clnt_destroy(*args->rpc_clnt);
+}
+
+/*
+ * process_krb5_upcall:
+ *
+ * this code uses the userland rpcsec gss library to create a krb5
+ * context on behalf of the kernel
+ *
+ * This is the meat of the upcall thread.  Note that cancelability is disabled
+ * and enabled at various points to ensure that any resources reserved by the
+ * lower level libraries are released safely.
+ */
+static void
+process_krb5_upcall(struct clnt_upcall_info *info)
+{
+	struct clnt_info	*clp = info->clp;
+	uid_t			uid = info->uid;
+	int			fd = info->fd;
+	char			*srchost = info->srchost;
+	char			*tgtname = info->target;
+	char			*service = info->service;
 	CLIENT			*rpc_clnt = NULL;
 	AUTH			*auth = NULL;
 	struct authgss_private_data pd;
 	gss_buffer_desc		token;
-	int			err, downcall_err = -EACCES;
+	int			err, downcall_err;
 	OM_uint32		maj_stat, min_stat, lifetime_rec;
 	gss_name_t		gacceptor = GSS_C_NO_NAME;
 	gss_OID			mech;
 	gss_buffer_desc		acceptor  = {0};
+	struct cleanup_args cleanup_args = {&min_stat, &acceptor, &token, &pd, &auth, &rpc_clnt};
 
 	token.length = 0;
 	token.value = NULL;
 	memset(&pd, 0, sizeof(struct authgss_private_data));
 
+	pthread_cleanup_push(cleanup_handler, &cleanup_args);
 	/*
 	 * If "service" is specified, then the kernel is indicating that
 	 * we must use machine credentials for this request.  (Regardless
@@ -642,6 +724,8 @@ process_krb5_upcall(struct clnt_info *clp, uid_t uid, int fd, char *tgtname,
 	 * used for this case is not important.
 	 *
 	 */
+	downcall_err = -EACCES;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	if (uid != 0 || (uid == 0 && root_uses_machine_creds == 0 &&
 				service == NULL)) {
 
@@ -653,7 +737,7 @@ process_krb5_upcall(struct clnt_info *clp, uid_t uid, int fd, char *tgtname,
 	if (auth == NULL) {
 		if (uid == 0 && (root_uses_machine_creds == 1 ||
 				service != NULL)) {
-			auth =	krb5_use_machine_creds(clp, uid, tgtname,
+			auth =	krb5_use_machine_creds(clp, uid, srchost, tgtname,
 							service, &rpc_clnt);
 			if (auth == NULL)
 				goto out_return_error;
@@ -662,15 +746,21 @@ process_krb5_upcall(struct clnt_info *clp, uid_t uid, int fd, char *tgtname,
 			goto out_return_error;
 		}
 	}
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_testcancel();
 
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	if (!authgss_get_private_data(auth, &pd)) {
 		printerr(1, "WARNING: Failed to obtain authentication "
 			    "data for user with uid %d for server %s\n",
 			 uid, clp->servername);
 		goto out_return_error;
 	}
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_testcancel();
 
 	/* Grab the context lifetime and acceptor name out of the ctx. */
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	maj_stat = gss_inquire_context(&min_stat, pd.pd_ctx, NULL, &gacceptor,
 				       &lifetime_rec, &mech, NULL, NULL, NULL);
 
@@ -682,75 +772,226 @@ process_krb5_upcall(struct clnt_info *clp, uid_t uid, int fd, char *tgtname,
 		get_hostbased_client_buffer(gacceptor, mech, &acceptor);
 		gss_release_name(&min_stat, &gacceptor);
 	}
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_testcancel();
 
 	/*
 	 * The serialization can mean turning pd.pd_ctx into a lucid context. If
 	 * that happens then the pd.pd_ctx will be unusable, so we must never
 	 * try to use it after this point.
 	 */
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	if (serialize_context_for_kernel(&pd.pd_ctx, &token, &krb5oid, NULL)) {
 		printerr(1, "WARNING: Failed to serialize krb5 context for "
 			    "user with uid %d for server %s\n",
 			 uid, clp->servername);
 		goto out_return_error;
 	}
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_testcancel();
 
 	do_downcall(fd, uid, &pd, &token, lifetime_rec, &acceptor);
 
 out:
-	gss_release_buffer(&min_stat, &acceptor);
-	if (token.value)
-		free(token.value);
-#ifdef HAVE_AUTHGSS_FREE_PRIVATE_DATA
-	if (pd.pd_ctx_hndl.length != 0 || pd.pd_ctx != 0)
-		authgss_free_private_data(&pd);
-#endif
-	if (auth)
-		AUTH_DESTROY(auth);
-	if (rpc_clnt)
-		clnt_destroy(rpc_clnt);
+	pthread_cleanup_pop(1);
 
 	return;
 
 out_return_error:
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_testcancel();
+
 	do_error_downcall(fd, uid, downcall_err);
 	goto out;
 }
 
-void
-handle_krb5_upcall(struct clnt_upcall_info *info)
+static struct clnt_upcall_info *
+alloc_upcall_info(struct clnt_info *clp, uid_t uid, int fd, char *srchost,
+		  char *target, char *service)
 {
-	struct clnt_info *clp = info->clp;
+	struct clnt_upcall_info *info;
 
-	printerr(2, "\n%s: uid %d (%s)\n", __func__, info->uid, clp->relpath);
+	info = malloc(sizeof(struct clnt_upcall_info));
+	if (info == NULL)
+		return NULL;
 
-	process_krb5_upcall(clp, info->uid, clp->krb5_fd, NULL, NULL);
+	memset(info, 0, sizeof(*info));
+	pthread_mutex_lock(&clp_lock);
+	clp->refcount++;
+	pthread_mutex_unlock(&clp_lock);
+	info->clp = clp;
+	info->uid = uid;
+	info->fd = fd;
+	if (srchost) {
+		info->srchost = strdup(srchost);
+		if (info->srchost == NULL)
+			goto out_info;
+	}
+	if (target) {
+		info->target = strdup(target);
+		if (info->target == NULL)
+			goto out_srchost;
+	}
+	if (service) {
+		info->service = strdup(service);
+		if (info->service == NULL)
+			goto out_target;
+	}
+
+out:
+	return info;
+
+out_target:
+	if (info->target)
+		free(info->target);
+out_srchost:
+	if (info->srchost)
+		free(info->srchost);
+out_info:
+	free(info);
+	info = NULL;
+	goto out;
+}
+
+void free_upcall_info(struct clnt_upcall_info *info)
+{
+	gssd_free_client(info->clp);
+	if (info->service)
+		free(info->service);
+	if (info->target)
+		free(info->target);
+	if (info->srchost)
+		free(info->srchost);
 	free(info);
 }
 
-void
-handle_gssd_upcall(struct clnt_upcall_info *info)
+static void
+cleanup_clnt_upcall_info(void *arg)
 {
-	struct clnt_info	*clp = info->clp;
+	struct clnt_upcall_info *info = (struct clnt_upcall_info *)arg;
+
+	free_upcall_info(info);
+}
+
+static void
+gssd_work_thread_fn(struct clnt_upcall_info *info)
+{
+	pthread_cleanup_push(cleanup_clnt_upcall_info, info);
+	process_krb5_upcall(info);
+	pthread_cleanup_pop(1);
+}
+
+static struct upcall_thread_info *
+alloc_upcall_thread_info(void)
+{
+	struct upcall_thread_info *info;
+
+	info = malloc(sizeof(struct upcall_thread_info));
+	if (info == NULL)
+		return NULL;
+	memset(info, 0, sizeof(*info));
+	return info;
+}
+
+static int
+start_upcall_thread(void (*func)(struct clnt_upcall_info *), struct clnt_upcall_info *info)
+{
+	pthread_attr_t attr;
+	pthread_t th;
+	struct upcall_thread_info *tinfo;
+	int ret;
+	pthread_t tid = pthread_self();
+
+	tinfo = alloc_upcall_thread_info();
+	if (!tinfo)
+		return -ENOMEM;
+	tinfo->fd = info->fd;
+	tinfo->uid = info->uid;
+
+	ret = pthread_attr_init(&attr);
+	if (ret != 0) {
+		printerr(0, "ERROR: failed to init pthread attr: ret %d: %s\n",
+			 ret, strerror(errno));
+		free(tinfo);
+		return ret;
+	}
+
+	ret = pthread_create(&th, &attr, (void *)func, (void *)info);
+	if (ret != 0) {
+		printerr(0, "ERROR: pthread_create failed: ret %d: %s\n",
+			 ret, strerror(errno));
+		free(tinfo);
+		return ret;
+	}
+	printerr(2, "start_upcall_thread(0x%lx): created thread id 0x%lx\n", 
+		tid, th);
+
+	tinfo->tid = th;
+	pthread_mutex_lock(&active_thread_list_lock);
+	clock_gettime(CLOCK_MONOTONIC, &tinfo->timeout);
+	tinfo->timeout.tv_sec += upcall_timeout;
+	TAILQ_INSERT_TAIL(&active_thread_list, tinfo, list);
+	pthread_mutex_unlock(&active_thread_list_lock);
+
+	return ret;
+}
+
+void
+handle_krb5_upcall(struct clnt_info *clp)
+{
 	uid_t			uid;
+	struct clnt_upcall_info	*info;
+	int			err;
+
+	if (read(clp->krb5_fd, &uid, sizeof(uid)) < (ssize_t)sizeof(uid)) {
+		printerr(0, "WARNING: failed reading uid from krb5 "
+			    "upcall pipe: %s\n", strerror(errno));
+		return;
+	}
+	printerr(2, "\n%s: uid %d (%s)\n", __func__, uid, clp->relpath);
+
+	info = alloc_upcall_info(clp, uid, clp->krb5_fd, NULL, NULL, NULL);
+	if (info == NULL) {
+		printerr(0, "%s: failed to allocate clnt_upcall_info\n", __func__);
+		do_error_downcall(clp->krb5_fd, uid, -EACCES);
+		return;
+	}
+	err = start_upcall_thread(gssd_work_thread_fn, info);
+	if (err != 0) {
+		do_error_downcall(clp->krb5_fd, uid, -EACCES);
+		free_upcall_info(info);
+	}
+}
+
+void
+handle_gssd_upcall(struct clnt_info *clp)
+{
+	uid_t			uid;
+	char			lbuf[RPC_CHAN_BUF_SIZE];
+	int			lbuflen = 0;
 	char			*p;
 	char			*mech = NULL;
 	char			*uidstr = NULL;
 	char			*target = NULL;
 	char			*service = NULL;
+	char			*srchost = NULL;
 	char			*enctypes = NULL;
-	char			*upcall_str;
-	char			*pbuf = info->lbuf;
+	pthread_t tid = pthread_self();
+	struct clnt_upcall_info	*info;
+	int			err;
 
-	printerr(2, "\n%s: '%s' (%s)\n", __func__, info->lbuf, clp->relpath);
-
-	upcall_str = strdup(info->lbuf);
-	if (upcall_str == NULL) {
-		printerr(0, "ERROR: malloc failure\n");
-		goto out_nomem;
+	lbuflen = read(clp->gssd_fd, lbuf, sizeof(lbuf));
+	if (lbuflen <= 0 || lbuf[lbuflen-1] != '\n') {
+		printerr(0, "WARNING: handle_gssd_upcall: "
+			    "failed reading request\n");
+		return;
 	}
+	lbuf[lbuflen-1] = 0;
 
-	while ((p = strsep(&pbuf, " "))) {
+	printerr(2, "\n%s(0x%lx): '%s' (%s)\n", __func__, tid,
+		 lbuf, clp->relpath);
+
+	for (p = strtok(lbuf, " "); p; p = strtok(NULL, " ")) {
 		if (!strncmp(p, "mech=", strlen("mech=")))
 			mech = p + strlen("mech=");
 		else if (!strncmp(p, "uid=", strlen("uid=")))
@@ -761,13 +1002,15 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 			target = p + strlen("target=");
 		else if (!strncmp(p, "service=", strlen("service=")))
 			service = p + strlen("service=");
+		else if (!strncmp(p, "srchost=", strlen("srchost=")))
+			srchost = p + strlen("srchost=");
 	}
 
 	if (!mech || strlen(mech) < 1) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			    "failed to find gss mechanism name "
-			    "in upcall string '%s'\n", upcall_str);
-		goto out;
+			    "in upcall string '%s'\n", lbuf);
+		return;
 	}
 
 	if (uidstr) {
@@ -779,21 +1022,21 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	if (!uidstr) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			    "failed to find uid "
-			    "in upcall string '%s'\n", upcall_str);
-		goto out;
+			    "in upcall string '%s'\n", lbuf);
+		return;
 	}
 
 	if (enctypes && parse_enctypes(enctypes) != 0) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			 "parsing encryption types failed: errno %d\n", errno);
-		goto out;
+		return;
 	}
 
 	if (target && strlen(target) < 1) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			 "failed to parse target name "
-			 "in upcall string '%s'\n", upcall_str);
-		goto out;
+			 "in upcall string '%s'\n", lbuf);
+		return;
 	}
 
 	/*
@@ -807,22 +1050,26 @@ handle_gssd_upcall(struct clnt_upcall_info *info)
 	if (service && strlen(service) < 1) {
 		printerr(0, "WARNING: handle_gssd_upcall: "
 			 "failed to parse service type "
-			 "in upcall string '%s'\n", upcall_str);
-		goto out;
+			 "in upcall string '%s'\n", lbuf);
+		return;
 	}
 
-	if (strcmp(mech, "krb5") == 0 && clp->servername)
-		process_krb5_upcall(clp, uid, clp->gssd_fd, target, service);
-	else {
+	if (strcmp(mech, "krb5") == 0 && clp->servername) {
+		info = alloc_upcall_info(clp, uid, clp->gssd_fd, srchost, target, service);
+		if (info == NULL) {
+			printerr(0, "%s: failed to allocate clnt_upcall_info\n", __func__);
+			do_error_downcall(clp->gssd_fd, uid, -EACCES);
+			return;
+		}
+		err = start_upcall_thread(gssd_work_thread_fn, info);
+		if (err != 0) {
+			do_error_downcall(clp->gssd_fd, uid, -EACCES);
+			free_upcall_info(info);
+		}
+	} else {
 		if (clp->servername)
 			printerr(0, "WARNING: handle_gssd_upcall: "
 				 "received unknown gss mech '%s'\n", mech);
 		do_error_downcall(clp->gssd_fd, uid, -EACCES);
 	}
-out:
-	free(upcall_str);
-out_nomem:
-	free(info);
-	return;
 }
-
