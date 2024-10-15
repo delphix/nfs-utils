@@ -31,7 +31,7 @@ override_dh_bugfiles:
 override_dh_fixperms:
 	dh_fixperms
 	chmod +x debian/nfs-common/usr/lib/systemd/scripts/nfs-server-prep.sh
-	chmod u+s debian/nfs-common/sbin/mount.nfs
+	chmod u+s debian/nfs-common/usr/sbin/mount.nfs
 
 override_dh_install:
 	# we will let the generator produce these units, see LP: #1971935
