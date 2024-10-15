@@ -21,6 +21,7 @@ void		cache_open(void);
 void		cache_set_fds(fd_set *fdset);
 int		cache_process_req(fd_set *readfds);
 void		cache_process_loop(void);
+int   cache_expire_subdirs(nfs_export *exp, char *path);
 
 void		v4clients_init(void);
 void		v4clients_set_fds(fd_set *fdset);
