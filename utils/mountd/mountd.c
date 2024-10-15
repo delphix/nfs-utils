@@ -454,107 +454,76 @@ get_rootfh(struct svc_req *rqstp, dirpath *path, nfs_export **expret,
 	 * address.  We feed it to kernel then extract the filehandle,
 	 */
 
-		/*
-		 * Before we ask the kernel for a filehandle, do downcalls to
-		 * insert into the relevant caches the information the kernel
-		 * will need to generate the filehandle.
-		 */
-		if (cache_export(exp, p)) {
-			*error = MNT3ERR_ACCES;
-			return NULL;
-		}
+  /*
+   * Before we ask the kernel for a filehandle, do downcalls to
+   * insert into the relevant caches the information the kernel
+   * will need to generate the filehandle.
+   */
+  if (cache_export(exp, p)) {
+    *error = MNT3ERR_ACCES;
+    return NULL;
+  }
 
-		/*
-		 * Get the filehandle. The kernel will do a lookup in the export
-		 * cache for the entry we just inserted. However, we just
-		 * inserted an entry for exp->m_export.e_path, the directory
-		 * being exported. The kernel will look up the directory the
-		 * client is trying to mount, p, which could be a subdirectory
-		 * of the export. If p is a subdirectory, the lookup will return
-		 * that there was no positive entry in the cache, but an invalid
-		 * entry will be left behind. The idea is that the lookup will
-		 * typically trigger an upcall, and the entry will remain
-		 * invalid until the corresponding downcall completes, filling
-		 * out the info for the entry and determining whether it becomes
-		 * a positive or negative entry. However, these particular
-		 * lookups don't have an upcall associated with them, so the
-		 * entries remain invalid.
-		 *
-		 * This doesn't cause any issues yet. Seeing that there is no
-		 * entry for the path p, the kernel will successively look for
-		 * entries for parent directories until it comes across the
-		 * entry we just inserted for the path exp->m_export.e_path,
-		 * and then will successfully create a filehandle and hand it
-		 * back to us.
-		 *
-		 * However, the invalid entries left in the export cache have
-		 * a reference to the mount corresponding to the path they
-		 * represent. Because of
-		 * https://www.spinics.net/lists/linux-nfs/msg61970.html,
-		 * these invalid entries are never flushed, and it becomes
-		 * impossible to unmount the filesystem containing the path p.
-		 */
-		fh = cache_get_filehandle(exp, v3?64:32, p);
-		if (fh == NULL) {
-			*error = MNT3ERR_ACCES;
-			return NULL;
-		}
+  /*
+   * Get the filehandle. The kernel will do a lookup in the export
+   * cache for the entry we just inserted. However, we just
+   * inserted an entry for exp->m_export.e_path, the directory
+   * being exported. The kernel will look up the directory the
+   * client is trying to mount, p, which could be a subdirectory
+   * of the export. If p is a subdirectory, the lookup will return
+   * that there was no positive entry in the cache, but an invalid
+   * entry will be left behind. The idea is that the lookup will
+   * typically trigger an upcall, and the entry will remain
+   * invalid until the corresponding downcall completes, filling
+   * out the info for the entry and determining whether it becomes
+   * a positive or negative entry. However, these particular
+   * lookups don't have an upcall associated with them, so the
+   * entries remain invalid.
+   *
+   * This doesn't cause any issues yet. Seeing that there is no
+   * entry for the path p, the kernel will successively look for
+   * entries for parent directories until it comes across the
+   * entry we just inserted for the path exp->m_export.e_path,
+   * and then will successfully create a filehandle and hand it
+   * back to us.
+   *
+   * However, the invalid entries left in the export cache have
+   * a reference to the mount corresponding to the path they
+   * represent. Because of
+   * https://www.spinics.net/lists/linux-nfs/msg61970.html,
+   * these invalid entries are never flushed, and it becomes
+   * impossible to unmount the filesystem containing the path p.
+   */
+  fh = cache_get_filehandle(exp, v3?64:32, p);
+  if (fh == NULL) {
+    *error = MNT3ERR_ACCES;
+    return NULL;
+  }
 
-		/*
-		 * Since these invalid entries are going to cause us problems
-		 * when we try to unmount the filesystem, let's get rid of them
-		 * now. We can do this by doing a downcall for each of the paths
-		 * represented by the invalid entries, turning them into
-		 * negative entries that can expire and be flushed. We can even
-		 * set their expiration to be in the past so that they are
-		 * removed before the downcall completes.
-		 *
-		 * How do we know these downcalls and negative entries won't
-		 * interfere with normal NFS operations?
-		 *  1. There shouldn't be positive entries corresponding to
-		 *     these paths. If we were actually exporting any of the
-		 *     intermediate directories to this client, then
-		 *     exp->m_export would be an export for that directory
-		 *     instead. So we aren't removing any critical entries.
-		 *  2. All entries can be flushed at any time by 'exportfs -u',
-		 *     anyway, so this isn't any different than that. Even if
-		 *     we were flushing important entries, anyone who needs
-		 *     the info in those entries needs to be capable of handling
-		 *     their disappearance.
-		 */
-		if (cache_expire_subdirs(exp, p) < 0)
-			return NULL;
-	} else {
-		int did_export = 0;
-	retry:
-		if (exp->m_exported<1) {
-			export_export(exp);
-			did_export = 1;
-		}
-		if (!exp->m_xtabent)
-			xtab_append(exp);
-
-		if (v3)
-			fh = getfh_size((struct sockaddr_in *)sap, p, 64);
-		if (!v3 || (fh == NULL && errno == EINVAL)) {
-			/* We first try the new nfs syscall. */
-			fh = getfh((struct sockaddr_in *)sap, p);
-			if (fh == NULL && errno == EINVAL)
-				/* Let's try the old one. */
-				fh = getfh_old((struct sockaddr_in *)sap,
-						stb.st_dev, stb.st_ino);
-		}
-		if (fh == NULL && !did_export) {
-			exp->m_exported = 0;
-			goto retry;
-		}
-
-		if (fh == NULL) {
-			xlog(L_WARNING, "getfh failed: %s", strerror(errno));
-			*error = MNT3ERR_ACCES;
-			return NULL;
-		}
-	}
+  /*
+   * Since these invalid entries are going to cause us problems
+   * when we try to unmount the filesystem, let's get rid of them
+   * now. We can do this by doing a downcall for each of the paths
+   * represented by the invalid entries, turning them into
+   * negative entries that can expire and be flushed. We can even
+   * set their expiration to be in the past so that they are
+   * removed before the downcall completes.
+   *
+   * How do we know these downcalls and negative entries won't
+   * interfere with normal NFS operations?
+   *  1. There shouldn't be positive entries corresponding to
+   *     these paths. If we were actually exporting any of the
+   *     intermediate directories to this client, then
+   *     exp->m_export would be an export for that directory
+   *     instead. So we aren't removing any critical entries.
+   *  2. All entries can be flushed at any time by 'exportfs -u',
+   *     anyway, so this isn't any different than that. Even if
+   *     we were flushing important entries, anyone who needs
+   *     the info in those entries needs to be capable of handling
+   *     their disappearance.
+   */
+  if (cache_expire_subdirs(exp, p) < 0)
+    return NULL;
 	*error = MNT_OK;
 	mountlist_add(host_ntop(sap, buf, sizeof(buf)), p);
 	if (expret)
