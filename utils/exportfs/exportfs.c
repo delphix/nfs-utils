@@ -204,6 +204,7 @@ main(int argc, char **argv)
 	 */
 	grab_lockfile();
 	atexit(release_lockfile);
+
 	if (f_export && ! f_ignore) {
 		if (! (export_read(_PATH_EXPORTS, 0) +
 		       export_d_read(_PATH_EXPORTS_D, 0))) {

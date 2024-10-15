@@ -106,7 +106,7 @@ static void init_exportent (struct exportent *ee, int fromkernel)
 	ee->e_uuid = NULL;
 	ee->e_ttl = default_ttl;
 	ee->e_reexport = REEXP_NONE;
-  ee->e_fsid_value[0] = '\0';
+	ee->e_fsid_value[0] = '\0';
 }
 
 struct exportent *

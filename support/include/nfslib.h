@@ -100,7 +100,7 @@ struct exportent {
 	char *		e_realpath;
 	int		e_reexport;
 	/* cache the fsid to avoid excessive statfs calls */
-  char		e_fsid_value[17];
+	char		e_fsid_value[17];
 };
 
 struct rmtabent {

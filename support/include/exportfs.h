@@ -164,8 +164,6 @@ struct addrinfo *		host_reliable_addrinfo(const struct sockaddr *sap);
 __attribute__((__malloc__))
 struct addrinfo *		host_numeric_addrinfo(const struct sockaddr *sap);
 
-int				rmtab_read(void);
-
 struct nfskey *			key_lookup(char *hname);
 
 struct export_features {
