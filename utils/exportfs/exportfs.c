@@ -115,7 +115,6 @@ main(int argc, char **argv)
 	int	f_ignore = 0;
 	int	i, c;
 	int	force_flush = 0;
-	struct	timespec rmtab_mtim = {0};
 
 	if ((progname = strrchr(argv[0], '/')) != NULL)
 		progname++;
