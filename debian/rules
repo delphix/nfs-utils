@@ -31,7 +31,6 @@ override_dh_bugfiles:
 override_dh_fixperms:
 	dh_fixperms
 	chmod +x debian/nfs-common/usr/lib/systemd/scripts/nfs-server-prep.sh
-	chmod +x debian/nfs-common/usr/lib/systemd/scripts/nfs-utils_env.sh
 	chmod u+s debian/nfs-common/sbin/mount.nfs
 
 override_dh_install:
