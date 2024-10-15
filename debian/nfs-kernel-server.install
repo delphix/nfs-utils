@@ -7,7 +7,6 @@ debian/tmp/usr/sbin/nfsdclnts
 debian/tmp/usr/sbin/nfsref
 debian/tmp/usr/sbin/rpc.mountd
 debian/tmp/usr/sbin/rpc.nfsd
-debian/tmp/var/lib/nfs/etab
 debian/tmp/var/lib/nfs/rmtab
 debian/nfs-kernel-server.default /usr/share/nfs-kernel-server/conffiles/
 debian/etc.exports /usr/share/nfs-kernel-server/conffiles/
