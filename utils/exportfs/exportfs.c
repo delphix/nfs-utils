@@ -33,16 +33,17 @@
 
 #include "sockaddr.h"
 #include "misc.h"
+#include "nfsd_path.h"
 #include "nfslib.h"
 #include "exportfs.h"
 #include "xlog.h"
+#include "conffile.h"
+#include "reexport.h"
 
 static void	export_all(int verbose);
 static void	exportfs(char *arg, char *options, int verbose);
 static void	unexportfs(char *arg, int verbose);
-static void	exports_update(int verbose);
 static void	dump(int verbose, int export_format);
-static void	error(nfs_export *exp, int err);
 static void	usage(const char *progname, int n);
 static void	validate_export(nfs_export *exp);
 static int	matchhostname(const char *hostname1, const char *hostname2);
@@ -69,19 +70,38 @@ static int _lockfd = -1;
  * need these additional lockfile() routines.
  */
 static void
-grab_lockfile()
+grab_lockfile(void)
 {
 	_lockfd = open(lockfile, O_CREAT|O_RDWR, 0666);
 	if (_lockfd != -1)
 		lockf(_lockfd, F_LOCK, 0);
 }
 static void
-release_lockfile()
+release_lockfile(void)
 {
-	if (_lockfd != -1)
+	if (_lockfd != -1) {
 		lockf(_lockfd, F_ULOCK, 0);
+		close(_lockfd);
+		_lockfd = -1;
+	}
 }
+inline static void 
+read_exportfs_conf(char **argv)
+{
+	char *s;
 
+	conf_init_file(NFS_CONFFILE);
+	xlog_set_debug("exportfs");
+
+	/* NOTE: following uses "mountd" section of nfs.conf !!!! */
+	s = conf_get_str("mountd", "state-directory-path");
+	/* Also look in the exportd section */
+	if (s == NULL)
+		s = conf_get_str("exportd", "state-directory-path");
+	if (s && !state_setup_basedir(argv[0], s))
+		exit(1);
+
+}
 int
 main(int argc, char **argv)
 {
@@ -94,9 +114,7 @@ main(int argc, char **argv)
 	int	f_reexport = 0;
 	int	f_ignore = 0;
 	int	i, c;
-	int	new_cache = 0;
 	int	force_flush = 0;
-	struct	timespec rmtab_mtim = {0};
 
 	if ((progname = strrchr(argv[0], '/')) != NULL)
 		progname++;
@@ -106,6 +124,11 @@ main(int argc, char **argv)
 	xlog_open(progname);
 	xlog_stderr(1);
 	xlog_syslog(0);
+
+	/* Read in config setting */
+	read_exportfs_conf(argv);
+
+	nfsd_path_init();
 
 	while ((c = getopt(argc, argv, "ad:fhio:ruvs")) != EOF) {
 		switch(c) {
@@ -158,21 +181,20 @@ main(int argc, char **argv)
 		xlog(L_ERROR, "-r and -u are incompatible");
 		return 1;
 	}
-	new_cache = check_new_cache();
+
+	if (!setup_state_path_names(progname, ETAB, ETABTMP, ETABLCK, &etab))
+		return 1;
+
 	if (optind == argc && ! f_all) {
 		if (force_flush) {
-			if (new_cache)
-				cache_flush(1);
-			else {
-				xlog(L_ERROR, "-f is available only "
-					"with new cache controls. "
-					"Mount /proc/fs/nfsd first");
-				return 1;
-			}
+			cache_flush();
+			free_state_path_names(&etab);
 			return 0;
 		} else {
 			xtab_export_read();
 			dump(f_verbose, f_export_format);
+			free_state_path_names(&etab);
+			export_freeall();
 			return 0;
 		}
 	}
@@ -183,17 +205,9 @@ main(int argc, char **argv)
 	grab_lockfile();
 	atexit(release_lockfile);
 
-	/* track if etab file is changed */
-	if (f_all && f_reexport) {
-		struct	stat stb;
-
-		if (stat(_PATH_ETAB, &stb) == 0)
-			rmtab_mtim = stb.st_mtim;
-	}
-
 	if (f_export && ! f_ignore) {
-		if (! (export_read(_PATH_EXPORTS) +
-		       export_d_read(_PATH_EXPORTS_D))) {
+		if (! (export_read(_PATH_EXPORTS, 0) +
+		       export_d_read(_PATH_EXPORTS_D, 0))) {
 			if (f_verbose)
 				xlog(L_WARNING, "No file systems exported!");
 		}
@@ -218,84 +232,13 @@ main(int argc, char **argv)
 		if (!f_export)
 			for (i = optind ; i < argc ; i++)
 				unexportfs(argv[i], f_verbose);
-		if (!new_cache)
-			rmtab_read();
-	}
-	if (!new_cache) {
-		xtab_mount_read();
-		exports_update(f_verbose);
 	}
 	xtab_export_write();
-	if (new_cache)
-		cache_flush(force_flush);
-	if (!new_cache)
-		xtab_mount_write();
-
-	if (f_all && f_reexport) {
-		struct	stat stb;
-
-		/* If etab file was updated, reconcile the entries in rmtab file
-		 * which will remove stale entries.
-		 */
-		if (stat(_PATH_ETAB, &stb) == 0 &&
-		    (rmtab_mtim.tv_sec != stb.st_mtim.tv_sec ||
-		    rmtab_mtim.tv_nsec != stb.st_mtim.tv_nsec)) {
-			rmtab_rebuild();
-		}
-	}
+	cache_flush();
+	free_state_path_names(&etab);
+	export_freeall();
 
 	return export_errno;
-}
-
-static void
-exports_update_one(nfs_export *exp, int verbose)
-{
-		/* check mountpoint option */
-	if (exp->m_mayexport &&
-	    exp->m_export.e_mountpoint &&
-	    !is_mountpoint(exp->m_export.e_mountpoint[0]?
-			   exp->m_export.e_mountpoint:
-			   exp->m_export.e_path)) {
-		printf("%s not exported as %s not a mountpoint.\n",
-		       exp->m_export.e_path, exp->m_export.e_mountpoint);
-		exp->m_mayexport = 0;
-	}
-	if (exp->m_mayexport && ((exp->m_exported<1) || exp->m_changed)) {
-		if (verbose)
-			printf("%sexporting %s:%s to kernel\n",
-			       exp->m_exported ?"re":"",
-			       exp->m_client->m_hostname,
-			       exp->m_export.e_path);
-		if (!export_export(exp))
-			error(exp, errno);
-	}
-	if (exp->m_exported && ! exp->m_mayexport) {
-		if (verbose)
-			printf("unexporting %s:%s from kernel\n",
-			       exp->m_client->m_hostname,
-			       exp->m_export.e_path);
-		if (!export_unexport(exp))
-			error(exp, errno);
-	}
-}
-
-
-/* we synchronise intention with reality.
- * entries with m_mayexport get exported
- * entries with m_exported but not m_mayexport get unexported
- * looking at m_client->m_type == MCL_FQDN and m_client->m_type == MCL_GSS only
- */
-static void
-exports_update(int verbose)
-{
-	nfs_export 	*exp;
-
-	for (exp = exportlist[MCL_FQDN].p_head; exp; exp=exp->m_next) {
-		exports_update_one(exp, verbose);
-	}
-	for (exp = exportlist[MCL_GSS].p_head; exp; exp=exp->m_next) {
-		exports_update_one(exp, verbose);
-	}
 }
 
 /*
@@ -358,7 +301,7 @@ exportfs_parsed(char *hname, char *path, char *options, int verbose)
 	validate_export(exp);
 
 out:
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 }
 
 static int exportfs_generic(char *arg, char *options, int verbose)
@@ -434,10 +377,12 @@ unexportfs_parsed(char *hname, char *path, int verbose)
 	 * so need to deal with it.
 	*/
 	size_t nlen = strlen(path);
-	while (path[nlen - 1] == '/')
+	while ((nlen > 1) && (path[nlen - 1] == '/'))
 		nlen--;
 
 	for (exp = exportlist[htype].p_head; exp; exp = exp->m_next) {
+		if (strlen(exp->m_export.e_path) != nlen)
+			continue;
 		if (path && strncmp(path, exp->m_export.e_path, nlen))
 			continue;
 		if (htype != exp->m_client->m_type)
@@ -462,10 +407,6 @@ unexportfs_parsed(char *hname, char *path, int verbose)
 					exp->m_client->m_hostname,
 					exp->m_export.e_path);
 		}
-#if 0
-		if (exp->m_exported && !export_unexport(exp))
-			error(exp, errno);
-#endif
 		exp->m_xtabent = 0;
 		exp->m_mayexport = 0;
 		success = 1;
@@ -473,7 +414,7 @@ unexportfs_parsed(char *hname, char *path, int verbose)
 	if (!success)
 		xlog(L_ERROR, "Could not find '%s:%s' to unexport.", hname, path);
 
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 }
 
 static int unexportfs_generic(char *arg, int verbose)
@@ -563,31 +504,6 @@ static int can_test(void)
 	return 1;
 }
 
-static int test_export(char *path, int with_fsid)
-{
-	/* beside max path, buf size should take protocol str into account */
-	char buf[NFS_MAXPATHLEN+1+64] = { 0 };
-	char *bp = buf;
-	int len = sizeof(buf);
-	int fd, n;
-
-	n = snprintf(buf, len, "-test-client- ");
-	bp += n;
-	len -= n;
-	qword_add(&bp, &len, path);
-	if (len < 1)
-		return 0;
-	snprintf(bp, len, " 3 %d 65534 65534 0\n", with_fsid ? NFSEXP_FSID : 0);
-	fd = open("/proc/net/rpc/nfsd.export/channel", O_WRONLY);
-	if (fd < 0)
-		return 0;
-	n = write(fd, buf, strlen(buf));
-	close(fd);
-	if (n < 0)
-		return 0;
-	return 1;
-}
-
 static void
 validate_export(nfs_export *exp)
 {
@@ -597,8 +513,8 @@ validate_export(nfs_export *exp)
 	 * otherwise trial-export to '-test-client-' and check for failure.
 	 */
 	struct stat stb;
-	char *path = exp->m_export.e_path;
-	struct statfs64 stf;
+	char *path = exportent_realpath(&exp->m_export);
+	struct statfs stf;
 	int fs_has_fsid = 0;
 
 	if (stat(path, &stb) < 0) {
@@ -613,18 +529,18 @@ validate_export(nfs_export *exp)
 	if (!can_test())
 		return;
 
-	if (!statfs64(path, &stf) &&
+	if (!statfs(path, &stf) &&
 	    (stf.f_fsid.__val[0] || stf.f_fsid.__val[1]))
 		fs_has_fsid = 1;
 
 	if ((exp->m_export.e_flags & NFSEXP_FSID) || exp->m_export.e_uuid ||
 	    fs_has_fsid) {
-		if ( !test_export(path, 1)) {
+		if ( !export_test(&exp->m_export, 1)) {
 			xlog(L_ERROR, "%s does not support NFS export", path);
 			return;
 		}
-	} else if ( ! test_export(path, 0)) {
-		if (test_export(path, 1))
+	} else if ( !export_test(&exp->m_export, 0)) {
+		if (export_test(&exp->m_export, 1))
 			xlog(L_ERROR, "%s requires fsid= for NFS export", path);
 		else
 			xlog(L_ERROR, "%s does not support NFS export", path);
@@ -664,7 +580,7 @@ address_list(const char *hostname)
 	if (ai != NULL) {
 		/* @hostname was a presentation address */
 		cname = host_canonname(ai->ai_addr);
-		freeaddrinfo(ai);
+		nfs_freeaddrinfo(ai);
 		if (cname != NULL)
 			goto out;
 	}
@@ -715,11 +631,14 @@ matchhostname(const char *hostname1, const char *hostname2)
 			}
 
 out:
-	freeaddrinfo(results1);
-	freeaddrinfo(results2);
+	nfs_freeaddrinfo(results1);
+	nfs_freeaddrinfo(results2);
 	return result;
 }
 
+#ifdef HAVE_FUNC_ATTRIBUTE_FORMAT
+__attribute__((format (printf, 2, 3)))
+#endif
 static char
 dumpopt(char c, char *fmt, ...)
 {
@@ -771,32 +690,28 @@ dump(int verbose, int export_format)
 				continue;
 			}
 			c = '(';
-			if (ep->e_flags & NFSEXP_READONLY)
-				c = dumpopt(c, "ro");
-			else
-				c = dumpopt(c, "rw");
 			if (ep->e_flags & NFSEXP_ASYNC)
 				c = dumpopt(c, "async");
+			else
+				c = dumpopt(c, "sync");
 			if (ep->e_flags & NFSEXP_GATHERED_WRITES)
 				c = dumpopt(c, "wdelay");
+			else
+				c = dumpopt(c, "no_wdelay");
 			if (ep->e_flags & NFSEXP_NOHIDE)
 				c = dumpopt(c, "nohide");
+			else
+				c = dumpopt(c, "hide");
 			if (ep->e_flags & NFSEXP_CROSSMOUNT)
 				c = dumpopt(c, "crossmnt");
-			if (ep->e_flags & NFSEXP_INSECURE_PORT)
-				c = dumpopt(c, "insecure");
-			if (ep->e_flags & NFSEXP_ROOTSQUASH)
-				c = dumpopt(c, "root_squash");
-			else
-				c = dumpopt(c, "no_root_squash");
-			if (ep->e_flags & NFSEXP_ALLSQUASH)
-				c = dumpopt(c, "all_squash");
 			if (ep->e_flags & NFSEXP_NOSUBTREECHECK)
 				c = dumpopt(c, "no_subtree_check");
 			if (ep->e_flags & NFSEXP_NOAUTHNLM)
 				c = dumpopt(c, "insecure_locks");
 			if (ep->e_flags & NFSEXP_NOREADDIRPLUS)
 				c = dumpopt(c, "nordirplus");
+			if (ep->e_flags & NFSEXP_SECURITY_LABEL)
+				c = dumpopt(c, "security_label");
 			if (ep->e_flags & NFSEXP_NOACL)
 				c = dumpopt(c, "no_acl");
 			if (ep->e_flags & NFSEXP_PNFS)
@@ -805,6 +720,16 @@ dump(int verbose, int export_format)
 				c = dumpopt(c, "fsid=%d", ep->e_fsid);
 			if (ep->e_uuid)
 				c = dumpopt(c, "fsid=%s", ep->e_uuid);
+			if (ep->e_reexport) {
+				switch (ep->e_reexport) {
+					case REEXP_AUTO_FSIDNUM:
+						c = dumpopt(c, "reexport=%s", "auto-fsidnum");
+						break;
+					case REEXP_PREDEFINED_FSIDNUM:
+						c = dumpopt(c, "reexport=%s", "predefined-fsidnum");
+						break;
+				}
+			}
 			if (ep->e_mountpoint)
 				c = dumpopt(c, "mountpoint%s%s",
 					    ep->e_mountpoint[0]?"=":"",
@@ -829,16 +754,10 @@ dump(int verbose, int export_format)
 #endif
 			}
 			secinfo_show(stdout, ep);
+			xprtsecinfo_show(stdout, ep);
 			printf("%c\n", (c != '(')? ')' : ' ');
 		}
 	}
-}
-
-static void
-error(nfs_export *exp, int err)
-{
-	xlog(L_ERROR, "%s:%s: %s", exp->m_client->m_hostname,
-		exp->m_export.e_path, strerror(err));
 }
 
 static void

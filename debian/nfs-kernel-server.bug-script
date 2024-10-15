@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+grep_no_match_ok() {
+    grep "$@" || test $? -eq 1 || exit 2
+}
+
+echo '-- rpcinfo --' >&3
+/usr/sbin/rpcinfo -p >&3
+
+echo '-- /etc/default/nfs-kernel-server --' >&3
+grep_no_match_ok -v -e '#' -e '^$' /etc/default/nfs-kernel-server >&3
+
+echo '-- /etc/nfs.conf --' >&3
+grep_no_match_ok -v -e '^#' -e '^$' /etc/nfs.conf >&3
+
+if [ -d /etc/nfs.conf.d ]; then
+    for f in /etc/nfs.conf.d/*.conf; do
+        echo "-- $f --" >&3
+        grep_no_match_ok -v -e '^#' -e '^$' "$f" >&3
+    done
+fi
+
+echo '-- /etc/exports --' >&3
+grep_no_match_ok -v -e '^#' -e '^$' /etc/exports >&3
+
+echo '-- /proc/fs/nfs/exports --' >&3
+cat /proc/fs/nfs/exports >&3

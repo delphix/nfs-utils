@@ -28,6 +28,8 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include "nfslib.h"
+
 /*
  * ensure all of data on socket comes through. f==read || f==write
  */
@@ -42,6 +44,7 @@ ssize_t atomicio(ssize_t(*f) (int, void *, size_t), int fd, void *_s, size_t n)
 		case -1:
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
+			/* FALLTHRU */
 		case 0:
 			if (pos != 0)
 				return pos;

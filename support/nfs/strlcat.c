@@ -38,6 +38,8 @@ static char *rcsid = "$OpenBSD: strlcat.c,v 1.8 2001/05/13 15:40:15 deraadt Exp 
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 
+#include "nfslib.h"
+
 /*
  * Appends src to string dst of size siz (unlike strncat, siz is the
  * full size of dst, not space left).  At most siz-1 characters

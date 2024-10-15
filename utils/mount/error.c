@@ -50,8 +50,8 @@
 
 extern char *progname;
 
-static char errbuf[BUFSIZ];
-static char *erreob = &errbuf[BUFSIZ];
+static char errbuf[PATH_MAX];
+static char *erreob = &errbuf[PATH_MAX];
 
 /* Convert RPC errors into strings */
 static int rpc_strerror(int spos)
@@ -62,7 +62,7 @@ static int rpc_strerror(int spos)
 	char *tmp;
 
 	if (estr) {
-		if ((ptr = index(estr, ':')))
+		if ((ptr = strchr(estr, ':')))
 			estr = ++ptr;
 
 		tmp = &errbuf[spos];
@@ -207,52 +207,52 @@ void mount_error(const char *spec, const char *mount_point, int error)
 				progname, spec);
 		break;
 	case EINVAL:
-		nfs_error(_("%s: an incorrect mount option was specified"), progname);
+		nfs_error(_("%s: an incorrect mount option was specified for %s"),
+				progname, mount_point);
 		break;
 	case EOPNOTSUPP:
-		nfs_error(_("%s: requested NFS version or transport"
-				" protocol is not supported"),
-				progname);
+		nfs_error(_("%s: requested NFS version or transport protocol is not supported for %s"),
+				progname, mount_point);
 		break;
 	case ENOTDIR:
 		if (spec)
-			nfs_error(_("%s: mount spec %s or point %s is not a "
-				  "directory"),	progname, spec, mount_point);
+			nfs_error(_("%s: mount spec %s or point %s is not a directory"),
+				  progname, spec, mount_point);
 		else
 			nfs_error(_("%s: mount point %s is not a directory"),
 				  progname, mount_point);
 		break;
 	case EBUSY:
-		nfs_error(_("%s: %s is busy or already mounted"),
+		nfs_error(_("%s: %s is busy or already mounted or sharecache fail"),
 			progname, mount_point);
 		break;
 	case ENOENT:
 		if (spec)
-			nfs_error(_("%s: mounting %s failed, "
-				"reason given by server: %s"),
-				progname, spec, strerror(error));
+			nfs_error(_("%s: mounting %s failed, reason given by server: %s"),
+				  progname, spec, strerror(error));
 		else
 			nfs_error(_("%s: mount point %s does not exist"),
-				progname, mount_point);
+				  progname, mount_point);
 		break;
 	case ESPIPE:
 		rpc_mount_errors((char *)spec, 0, 0);
 		break;
 	case EIO:
-		nfs_error(_("%s: mount system call failed"), progname);
+		nfs_error(_("%s: mount system call failed for %s"),
+			  progname, mount_point);
 		break;
 	case EFAULT:
-		nfs_error(_("%s: encountered unexpected error condition."),
-				progname);
+		nfs_error(_("%s: encountered unexpected error condition for %s."),
+			  progname, mount_point);
 		nfs_error(_("%s: please report the error to" PACKAGE_BUGREPORT),
-				progname);
+			  progname);
 		break;
 	case EALREADY:
 		/* Error message has already been provided */
 		break;
 	default:
-		nfs_error(_("%s: %s"),
-			progname, strerror(error));
+		nfs_error(_("%s: %s for %s on %s"),
+			  progname, strerror(error), spec, mount_point);
 	}
 }
 

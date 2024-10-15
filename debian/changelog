@@ -1,51 +1,878 @@
-nfs-utils (1:1.3.4-2.5ubuntu3.7) focal; urgency=medium
+nfs-utils (1:2.6.4-3ubuntu5) noble; urgency=medium
 
-  * Fix minor version parsing when '-t nfs4' and '-o vers=4.x' or
-    '-o vers=4,minorversion=x' are all used together. This fixes a
-    regression caused by the changes to version negotiation included
-    in the previous release. (LP: #2059197)
-    - d/p/lp-2059197-1-mount-move-handling-of-t-nfs4-into-nfs_nfs_version.patch
-    - d/p/lp-2059197-2-mount-Fix-problems-with-parsing-minorversion.patch
-    - d/p/lp-2059197-3-mount.nfs-minorversion-setting-is-being-ignored-wit.patch
-    - d/p/lp-2059197-4-mount.nfs-Fix-auto-protocol-negotiation.patch
+  * No-change rebuild against libevent-core-2.1-7t64
 
- -- Matthew Ruffell <matthew.ruffell@canonical.com>  Wed, 03 Apr 2024 14:57:55 +1300
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Sun, 07 Apr 2024 02:44:50 +0000
 
-nfs-utils (1:1.3.4-2.5ubuntu3.6) focal; urgency=medium
+nfs-utils (1:2.6.4-3ubuntu4) noble; urgency=medium
 
-  * Fix default protocol version negotiation when NFSv4 is specified
-    on the command line with '-t nfs4' or '-o vers=4', such that it
-    actually follows the previously agreed-upon laddering approach,
-    of trying 4.2, then 4.1, then 4.0 before raising an error.
-    These patches also fix an issue where asking for a v4 mount could
-    result in a v3 mount if the namespace was available in v3, but
-    not in v4, such as with fsid=0. (LP: #2049262)
-    - d/p/lp-2049262-1-mount.nfs-improve-version-negotiation-when-vers-4-i.patch
-    - d/p/lp-2049262-2-mount.nfs-Use-default-minor-version-when-t-nfs4-is.patch
-    - d/p/lp-2049262-3-mount.nfs-Use-default-minor-version-when-o-v4-is-sp.patch
+  * No-change rebuild for CVE-2024-3094
 
- -- Matthew Ruffell <matthew.ruffell@canonical.com>  Thu, 18 Jan 2024 22:29:59 +1300
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Sun, 31 Mar 2024 08:10:14 +0000
 
-nfs-utils (1:1.3.4-2.5ubuntu3.5) focal; urgency=medium
+nfs-utils (1:2.6.4-3ubuntu3) noble; urgency=medium
 
-  * Fix sloppy argument processing with the '-s' and '-o' command line
-    options to ensure options are passed to the kernel at the very
-    beginning of the list. This fixes compatibility with the 5.15
-    HWE kernel. (LP: #2025302)
-    - d/p/lp-2025302-1-mount.nfs-insert-sloppy-at-beginning-of-the-options.patch
-    - d/p/lp-2025302-2-mount.nfs-Fix-the-sloppy-option-processing.patch
+  * No-change rebuild against libtirpc3t64
 
- -- Matthew Ruffell <matthew.ruffell@canonical.com>  Thu, 29 Jun 2023 14:29:20 +1200
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 29 Feb 2024 09:30:58 +0000
 
-nfs-utils (1:1.3.4-2.5ubuntu3.4) focal; urgency=medium
+nfs-utils (1:2.6.4-3ubuntu2) noble; urgency=medium
 
-  * d/nfs-common.postinst: always start nfs-utils.service, so the
-    restart in the #DEBHELPER# section can do its job if needed
-    (LP: #1928259)
+  * d/p/armhf-time-t-format-error.patch: resolve armhf ftbfs due to
+    time_t transition (LP: #2055349).
 
- -- Andreas Hasenack <andreas@canonical.com>  Mon, 24 May 2021 17:51:48 -0300
+ -- Vladimir Petko <vladimir.petko@canonical.com>  Thu, 29 Feb 2024 10:52:10 +1300
 
-nfs-utils (1:1.3.4-2.5ubuntu3.3) focal-security; urgency=medium
+nfs-utils (1:2.6.4-3ubuntu1) noble; urgency=medium
+
+  * Merge with Debian unstable (LP: #2055100). Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP 1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests (LP 1960828):
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-mount}: specific NFSv3 mount test
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP 1974067):
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+        [missed in previous d/changelog]
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP 1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
+
+ -- Vladimir Petko <vladimir.petko@canonical.com>  Tue, 27 Feb 2024 14:48:29 +1300
+
+nfs-utils (1:2.6.4-3) unstable; urgency=medium
+
+  [ Salvatore Bonaccorso ]
+  * fsidd: call anonymous sockets by their name only, don't fill with NULs to
+    108 bytes (Closes: #1051132)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 03 Dec 2023 14:58:30 +0100
+
+nfs-utils (1:2.6.4-2) unstable; urgency=medium
+
+  * Built with enabled support for NFS junctions
+    - Configure with --enable-junction to enable support for NFS junctions
+    - debian/control: Add Build-Depends on libxml2-dev
+  * nfs-kernel-server: Install nfsref utility and nfsref(8) manpage
+    (Closes: #1055675)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 23 Nov 2023 08:09:12 +0100
+
+nfs-utils (1:2.6.4-1) unstable; urgency=medium
+
+  * Upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Wed, 22 Nov 2023 07:15:57 +0100
+
+nfs-utils (1:2.6.4-1~exp1) experimental; urgency=medium
+
+  * New upstream version 2.6.4
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 21 Nov 2023 16:02:51 +0100
+
+nfs-utils (1:2.6.3-4~exp1) experimental; urgency=medium
+
+  * Remove extraneous words left behind by commit 522837f. (Closes: #1051088)
+  * Install systemd units to /usr/lib/systemd/system
+    - debian/rules: Drop explicit setting with path for Debian
+      --with=systemd=/lib/systemd/system and install the systemd units by
+      default in /usr/lib/systemd/system trough --with-systemd
+    - debian/nfs-common.install: Install systemd units from
+      /usr/lib/system/system
+    - debian/nfs-kernel-server.install: Install systemd units from
+      /usr/lib/system/system
+    - debian/*.links: Create symlinks for systemd units from and to
+      /usr/lib/systemd/system instead of /lib/systemd/system
+  * debian/rules: Don't force nfsdcltrack and mount helpers into /sbin
+  * nfs-common: Install {u,}mount.nfs{,4} into /usr/sbin
+  * nfs-common: lintian-overides: Adjust paths after installation to /usr/sbin
+  * nfs-kernel-server: Install nfsdcltrack to /usr/sbin
+  * debian/rules: Update chmod call to fix permissions of /usr/sbin/mount.nfs
+  * Install rpc.statd, sm-notify and showmount into /usr/sbin
+    - Install binaries to default locations in /usr/sbin
+    - Drop now oboslete patches to reference sm-notify from /sbin
+    - Drop now obsolete patches to change ExecStart to start sm-notify and
+      rpc.statd from /sbin
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 20 Nov 2023 22:13:01 +0100
+
+nfs-utils (1:2.6.3-3ubuntu1) mantic; urgency=medium
+
+  * Merge with Debian unstable (LP: #2030474). Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests (LP #1960828):
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-mount}: specific NFSv3 mount test
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP #1974067):
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP #1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
+  * Dropped changes:
+    - Rely on the generator units for the rpc_pipefs mount (LP #1971935):
+      + d/p/always-run-generator.patch: run the generator even if the
+        config differs from the built-in default
+      + d/rules: exclude the units we will let the generator produce
+      [Fixed in 1:2.6.3-1]
+
+ -- Vladimir Petko <vladimir.petko@canonical.com>  Tue, 08 Aug 2023 09:54:52 +1200
+
+nfs-utils (1:2.6.3-3) unstable; urgency=medium
+
+  * nfs-idmapd.service: add network-online.target to Wants= and After=
+    (Closes: #1035840)
+  * libnfsidmap: try to get the domain directly from hostname if the DNS
+    lookup fails and always show the log message if the domain can't be
+    determined
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 01 Aug 2023 15:10:41 +0200
+
+nfs-utils (1:2.6.3-2) unstable; urgency=medium
+
+  * fsidd: provide better default socket name. (Closes: #1041147)
+  * nfs-kernel-server: Handle leftover /fsid.sock socket
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 24 Jul 2023 11:01:42 +0200
+
+nfs-utils (1:2.6.3-1) unstable; urgency=medium
+
+  [ Andreas Hasenack ]
+  * Rely on the generator units for the rpc_pipefs mount (Closes: #1014429)
+    - d/p/always-run-generator.patch: run the generator even if the config
+      differs from the built-in default
+    - d/rules: exclude the units we will let the generator produce
+
+  [ Ben Hutchings ]
+  * Remove obsolete postinst upgrade logic and nfsconvert.py
+  * init: Remove support for setting command-line options in /etc/default
+  * d/salsa-ci.yml: Add shellcheck job
+  * start-statd: Fix shellcheck warnings
+  * init: Fix shellcheck warnings and info, thanks to наб (Closes: #1017869)
+  * d/*.bug-script: Fix redundant use of cat noted by shellcheck
+
+  [ Salvatore Bonaccorso ]
+  * Upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 09 Jul 2023 10:34:04 +0200
+
+nfs-utils (1:2.6.3-1~exp1) experimental; urgency=medium
+
+  [ Ben Hutchings ]
+  * d/control: Remove obsolete dependencies on lsb-base
+
+  [ Salvatore Bonaccorso ]
+  * New upstream version 2.6.3
+  * nfs-kernel-server: export: Add fsidd
+  * nfs-kernel-server: Add fsid systemd service file
+  * debian/rules: Replace call to dpkg-architecture with Makefile snippet
+    include
+  * nfs-common: lintian-overrides: Adapt overrides to new format
+  * nfs-kernel-server: lintian-overrides: Adapt overrides to new format
+
+  [ наб ]
+  * d/nfs-common.bug-script: fix stray \ warnings
+  * d/nfs-kernel-server.bug-script: fix stray \ warnings
+
+  [ Debian Janitor ]
+  * Apply multi-arch hints: libnfsidmap-dev: Add Multi-Arch: same
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 23 Apr 2023 18:08:07 +0200
+
+nfs-utils (1:2.6.2-4ubuntu1) lunar; urgency=medium
+
+  * Merge with Debian unstable. Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests (LP #1960828):
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-mount}: specific NFSv3 mount test
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP #1974067):
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+        [missed in previous d/changelog]
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP #1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - Rely on the generator units for the rpc_pipefs mount
+      (LP #1971935):
+      + d/p/always-run-generator.patch: run the generator even if the
+        config differs from the built-in default
+      + d/rules: exclude the units we will let the generator produce
+      [Missed in previous d/changelog]
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
+      [Missed in previous d/changelog]
+  * Dropped:
+    - d/rules: re-add hardening option lost from the src:libnfsidmap to
+      src:nfs-utils transition (LP: #1980095)
+      [In 1:2.6.2-1~exp1]
+
+ -- Andreas Hasenack <andreas@canonical.com>  Sun, 19 Feb 2023 14:49:53 -0300
+
+nfs-utils (1:2.6.2-4) unstable; urgency=medium
+
+  [ Guillem Jover ]
+  * Fix LSB init script output (Closes: #939153)
+
+  [ Salvatore Bonaccorso ]
+  * systemd: Don't degrade system state for nfs-clients when krb5 keytab
+    present but not containing the nfs/<FQDN> principal (Closes: #985002)
+  * Declare compliance with Debian policy 4.6.2
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Wed, 11 Jan 2023 21:41:40 +0100
+
+nfs-utils (1:2.6.2-3) unstable; urgency=medium
+
+  * Revert "Install upstream modprobe configuration file"
+  * Revert "configure: make modprobe.d directory configurable."
+  * Revert "modprobe: protect against sysctl errors"
+  * Revert "systemd: Apply all sysctl settings when NFS-related modules are
+    loaded"
+  * systemd: Apply all sysctl settings through udev rule when NFS-related
+    modules are loaded (Closes: #1024082)
+  * nfs-kernel-server: Install upstream udev configuration file
+  * auth-rpcgss-module.service: Don't fail inside linux container
+    (Closes: #985000)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 06 Dec 2022 16:38:32 +0100
+
+nfs-utils (1:2.6.2-2ubuntu1) lunar; urgency=low
+
+  * Merge from Debian unstable. Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests (LP #1960828):
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-moun}t: specific NFSv3 mount test
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP: #1974067):
+      + d/control: new package
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/not-installed: remove the plugin from the not-installed list
+      + d/p/remove-regex-from-docs.patch: deleted
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP: #1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/README.Ubuntu: updated with the content of the previous d/NEWS
+      file
+
+ -- Łukasz 'sil2100' Zemczak <lukasz.zemczak@ubuntu.com>  Fri, 25 Nov 2022 10:40:08 +0100
+
+nfs-utils (1:2.6.2-2) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Update lintian override info to new format on line 2.
+
+  [ Salvatore Bonaccorso ]
+  * blkmapd: fix coredump in bl_add_disk (Closes: #1022185)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 24 Nov 2022 23:42:20 +0100
+
+nfs-utils (1:2.6.2-1) unstable; urgency=medium
+
+  * Upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Fri, 02 Sep 2022 18:31:01 +0200
+
+nfs-utils (1:2.6.2-1~exp1) experimental; urgency=medium
+
+  [ Salvatore Bonaccorso ]
+  * New upstream version 2.6.2
+  * nfs-common: Install new rpcctl tool
+  * nfs-common: Install nfsrahead to configure the readahead for NFS mounts
+  * debian/rules: Build with DEB_BUILD_MAINT_OPTIONS = hardening=+all
+  * Declare compliance with Debian policy 4.6.1
+  * Install upstream modprobe configuration file
+    - Apply all sysctl settings when NFS-related modules are loaded.
+    - Configure modprobe.d directory to /lib/modprobe.d
+  * debian/control: nfs-kernel-server: Add Suggests on procps
+
+  [ Andreas Hasenack ]
+  * nfs-common.postrm: also purge /etc/nfs.conf.d/local.conf
+  * nfs-common.dirs: we also own /etc/nfs.conf.d
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 21 Aug 2022 22:41:04 +0200
+
+nfs-utils (1:2.6.1-2ubuntu5) lunar; urgency=medium
+
+  * d/p/blkmapd-fix-invalid-free.patch: fix blkmapd crash due to invalid
+    free() (LP: #1979885)
+
+ -- Andreas Hasenack <andreas@canonical.com>  Fri, 28 Oct 2022 08:26:52 -0300
+
+nfs-utils (1:2.6.1-2ubuntu4) kinetic; urgency=medium
+
+  * No-change rebuild against libevent-core-2.1-7a
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Fri, 07 Oct 2022 21:23:03 +0000
+
+nfs-utils (1:2.6.1-2ubuntu3) kinetic; urgency=medium
+
+  * d/p/fix-format-overflow-warning.patch: fix a format-overflow warning
+    from gcc which was failing the build
+
+ -- Andreas Hasenack <andreas@canonical.com>  Thu, 28 Jul 2022 20:39:54 +0000
+
+nfs-utils (1:2.6.1-2ubuntu2) kinetic; urgency=medium
+
+  * Rely on the generator units for the rpc_pipefs mount
+    (LP: #1971935):
+    - d/p/always-run-generator.patch: run the generator even if the
+      config differs from the built-in default
+    - d/rules: exclude the units we will let the generator produce
+
+ -- Andreas Hasenack <andreas@canonical.com>  Thu, 07 Jul 2022 21:08:11 +0000
+
+nfs-utils (1:2.6.1-2ubuntu1) kinetic; urgency=medium
+
+  * Merge with Debian unstable (LP: #1974233). Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Don't install the regex module, as it's built by
+      src:libnfsidmap-regex which is in Universe (MIR: #1960824)
+      + d/control: don't conflict/break/etc with libnfsidmap-regex
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/not-installed: mark files we knowingly don't include in the
+        packaging
+      + d/p/remove-regex-from-docs.patch: remove the regex section from
+        the idmapd.conf(5) manpage, as we are not building that plugin in
+        this package
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - d/nfs-common.postrm: also purge /etc/nfs.conf.d/local.conf
+    - d/nfs-common.dirs: we also own /etc/nfs.conf.d
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests (LP #1960828):
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-moun}t: specific NFSv3 mount test
+  * Dropped:
+    - d/nfsconvert.py: add short "u" option for mountd's no-udp
+      [Included in 1:2.6.1-2]
+    - d/NEWS: explain some of the major changes in 2.6.x
+      [Obsoleted by Debian's update to the per-package NEWS files]
+    - d/nfs-*.bug-script: update to also include /etc/nfs.conf and
+      /etc/nfs.conf.d/*.conf
+      [Included in 1:2.6.1-2]
+  * Added changes:
+    - New binary package libnfsidmap-regex (LP: #1974067):
+      + d/control: new package
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/not-installed: remove the plugin from the not-installed list
+      + d/p/remove-regex-from-docs.patch: deleted
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP: #1977745):
+      + d/p/svcgssd-fix-use-after-free.patch: fix use-after-free which was
+        preventing svcgssd options set in /etc/nfs.conf from being used
+      + d/p/svcgssd-display-principal-if-set.patch: improve logging,
+        showing the expected principal name if it was set in the config
+      + d/p/svcgssd-document-missing-options.patch: add missing options to
+        the svcgssd manpage
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/README.Ubuntu: updated with the content of the previous d/NEWS
+      file
+    - d/rules: re-add hardening option lost from the src:libnfsidmap to
+      src:nfs-utils transition (LP: #1980095)
+
+ -- Andreas Hasenack <andreas@canonical.com>  Tue, 28 Jun 2022 10:59:36 -0300
+
+nfs-utils (1:2.6.1-2) unstable; urgency=medium
+
+  [ Andreas Hasenack ]
+  * d/nfsconvert.py: add short "u" option for mountd's no-udp
+  * d/nfs-*.bug-script: update for new config files
+
+  [ Debian Janitor ]
+  * Trim trailing whitespace.
+  * Update renamed lintian tag names in lintian overrides.
+
+  [ Ben Hutchings ]
+  * nfs-kernel-server: Add NEWS entry for removal of NFSv2 (Closes: #1006650)
+  * nfs-common: Add NEWS entry for configuration file conversion
+  * nfsidmap.man: Fix section number (Closes: #947202)
+  * d/nfsconvert.py: Convert RPCMOUNTDOPTS without --manage-gids correctly
+    (Closes: #1006841)
+  * d/*.bug-script: Do not fail if grep finds no matching lines
+    (see #977904)
+  * nfs-common: Remove obsolete symlinks for sysvinit runlevels 2-5
+    (Closes: #740018)
+
+  [ Salvatore Bonaccorso ]
+  * debian/nfs.conf: Sync base version with upstream's nfs.conf
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 12 Apr 2022 12:20:44 +0200
+
+nfs-utils (1:2.6.1-1ubuntu1) jammy; urgency=medium
+
+  * Merge with Debian unstable (LP: #1960829). Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - d/NEWS: explain some of the major changes in 2.6.x
+    - Don't install the regex module, as it's built by
+      src:libnfsidmap-regex which is in Universe (MIR: #1960824)
+      + d/control: don't conflict/break/etc with libnfsidmap-regex
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/not-installed: mark files we knowingly don't include in the
+        packaging
+      + d/p/remove-regex-from-docs.patch: remove the regex section from
+        the idmapd.conf(5) manpage, as we are not building that plugin in
+        this package
+    - Update README files:
+      + d/README.Ubuntu: explains some of the packaging decisions
+      + d/README.Debian.nfsv4: removed as the content is out of date
+      + d/nfs-common.docs: install README.Ubuntu instead of
+        README.Debian.nfsv4
+      + d/libnfsidmap1.docs: install README.Ubuntu
+  * Dropped:
+    - d/nfs-common.postinst: always start nfs-utils.service, so the restart in
+      the #DEBHELPER# section can do its job if needed
+      [Fixed with the upstream re-arrangement of systemd units]
+  * Added:
+    - d/nfsconvert.py: add short "u" option for mountd's no-udp
+    - d/NEWS: update
+    - d/nfs-common.postrm: also purge /etc/nfs.conf.d/local.conf
+    - d/nfs-common.dirs: we also own /etc/nfs.conf.d
+    - d/README.Ubuntu: update
+    - d/nfs-*.bug-script: update to also include /etc/nfs.conf and
+      /etc/nfs.conf.d/*.conf
+    - New apport hook (LP: #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests (LP: #1960828):
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-moun}t: specific NFSv3 mount test
+
+ -- Andreas Hasenack <andreas@canonical.com>  Fri, 04 Mar 2022 17:44:10 -0300
+
+nfs-utils (1:2.6.1-1) unstable; urgency=medium
+
+  [ Ben Hutchings ]
+  * Delete obsolete README.Debian.nfsv4
+  * nfs-common: Remove obsolete upgrade logic from postinst
+  * nfs-common: Do not remove statoverride of mount.nfs on upgrade
+  * nfs-common: Convert /etc/default/nfs-* into /etc/nfs.conf.d/local.conf on
+    upgrade
+
+  [ Debian Janitor ]
+  * Remove constraints unnecessary since buster:
+    + Build-Depends: Drop versioned constraint on libtirpc-dev.
+    + nfs-kernel-server: Drop versioned constraint on lsb-base in Depends.
+    + nfs-common: Drop versioned constraint on lsb-base in Depends.
+    + nfs-common: Drop versioned constraint on mount and nfs-kernel-server in
+      Replaces.
+    + nfs-common: Drop versioned constraint on nfs-kernel-server in Breaks.
+    + libnfsidmap1: Drop versioned constraint on nfs-common in Replaces.
+    + libnfsidmap1: Drop versioned constraint on nfs-common in Breaks.
+
+ -- Ben Hutchings <benh@debian.org>  Thu, 24 Feb 2022 14:54:49 +0100
+
+nfs-utils (1:2.6.1-1~exp1ubuntu1) jammy; urgency=medium
+
+  * Merge with Debian experimental (LP: #1878601, #1812280). Remaining
+    changes:
+    - d/nfs-common.postinst: always start nfs-utils.service, so the restart in
+      the #DEBHELPER# section can do its job if needed
+  * Dropped:
+    - Add remove-gssproxy.patch: Drop gssproxy as it does not exist in Ubuntu
+      [Ubuntu has it, but not in main]
+    - debian/nfs-common.default: remove NEED_STATD and related comment.
+      [/etc/default/nfs-* files are no longer used]
+    - debian/nfs-common.default: always start idmapd automatically; drop the
+      configuration option.
+      [/etc/default/nfs-* files are no longer used]
+    - Add 90-gss-free-lucid-sec-context.patch: adjust for changes to the ctx
+      argument of the serialize_krb5_ctx() function.
+      [Was only needed when libgssglue-dev was used for build, which it
+      isn't since nfs-utils 1:1.2.8-7]
+    - Fixing nfs-mountd dependency on rpcbind (race condition) by adding
+      "rpcbind.socket" to "nfs-mountd.service"  as a dependency to avoid race
+      conditions:
+      - Add systemd-Fix-nfs-mountd-dependency-on-rpcbind.patch
+      [Fixed upstream]
+    - truncate_gid*.patch: Backports from upstream to prevent truncating UIDs
+      and GIDs over 65536 on certain architectures
+      [Fixed upstream]
+    - d/p/fix-start-ordering-1.patch, d/p/fix-start-ordering-2.patch, d/p/fix-
+      start-ordering-3.patch, d/nfs-kernel-server.install: Fix systemd service
+      start ordering
+      [Fixed upstream. Patch 3 we don't need anymore because now the pkg
+      is built with --with-systemd]
+    - Depend on network-online.target when starting services.
+      - d/p/lp1918141-use-network-online-target-01.patch: Declare a
+        Wants=network-online.target on all NFS server services.
+      - d/p/lp1918141-use-network-online-target-02.patch: Declare a
+        After=network-online.target on all NFS server services. Thanks to
+        Niklas Edmundsson for helping with the reproducer.
+        [Fixed upstream]
+  * Added:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1
+    - d/NEWS: explain some of the major changes in 2.6.x
+    - Don't install the regex module, as it's built by
+      src:libnfsidmap-regex which is in Universe (MIR: #1960824)
+      + d/control: don't conflict/break/etc with libnfsidmap-regex
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/not-installed: mark files we knowingly don't include in the
+        packaging
+      + d/p/remove-regex-from-docs.patch: remove the regex section from
+        the idmapd.conf(5) manpage, as we are not building that plugin in
+        this package
+    - Update README files:
+      + d/README.Ubuntu: explains some of the packaging decisions
+      + d/README.Debian.nfsv4: removed as the content is out of date
+      + d/nfs-common.docs: install README.Ubuntu instead of
+        README.Debian.nfsv4
+      + d/libnfsidmap1.docs: install README.Ubuntu
+
+ -- Andreas Hasenack <andreas@canonical.com>  Wed, 16 Feb 2022 20:20:26 +0000
+
+nfs-utils (1:2.6.1-1~exp1) experimental; urgency=medium
+
+  [ Romain Perier ]
+  * debian/rules: Modernize the packaging rules
+    - Standard compiler flags are now used (Closes: #756906)
+  * debian/control: No longer depends on dh-autoreconf
+
+  [ Ben Hutchings ]
+  * lintian: Refresh lintian-overrides
+  * d/control: Make nfs-kernel-server directly Recommend python3, as
+    lintian wants
+  * d/control: Reduce priority of libnfsidmap1 to optional as well
+  * Fix man page syntax errors
+  * d/control: Add debhelper-generated Pre-Depends to nfs-common
+  * d/control: Use my debian.org email in Uploaders field
+  * tests: Skip test if /dev/log is missing
+  * d/salsa-ci.yml: Add CI configuration for salsa.debian.org
+
+  [ Salvatore Bonaccorso ]
+  * debian/control: Use the debhelper-compat notation and drop debian/compat
+    file
+  * New upstream version 2.6.1
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 22 Jan 2022 20:16:02 +0100
+
+nfs-utils (1:2.5.4-1~exp5) experimental; urgency=medium
+
+  * Handle fade out-of /var/lib/nfs/xtab file
+  * debian/rules: configure: remove explicit options which are enabled by
+    default
+  * debian/rules: configure to install systemd unit files
+  * nfs-common: Introduce /etc/nfs.conf handling
+  * nfs-common: Move handling of /run/rpc_pipefs to /etc/nfs.conf
+  * Remove use of systemd nfs-config.service service
+  * nfs-common: Install rpc_pipefs.target and rpc-pipefs-generator
+  * nfs-kernel-server: Install nfsdcld service
+  * Drop "Let sysadmins enable/disable statd services"
+  * nfs-common: Install systemd unit files from debian/tmp/
+  * nfs-kernel-server: Install systemd unit files from debian/tmp/
+  * nfs-kernel-server: Install nfs-server-generator into system-generators
+  * Allow to install systemd unit generators in /lib/systemd
+  * Refresh "systemd: Fix non-default statedir paths."
+  * Move nfsdcld, nfsdclddb and nfsdclnts to nfs-kernel-server package
+  * Set pluginpath for libnfsidmap to
+    /usr/lib/$(DEB_HOST_MULTIARCH)/libnfsidmap
+  * nfs-kernel-server: Add Recommends on python3-yaml for the nfsdclnts tool
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 14 Sep 2021 09:48:58 +0200
+
+nfs-utils (1:2.5.4-1~exp4) experimental; urgency=medium
+
+  * Fix upgrade failure
+    Keep both rpc.mountd.8 and rpc.nfsd.8 in package nfs-kernel-server only
+    Closes: #993956
+
+ -- Anibal Monsalve Salazar <anibal@debian.org>  Thu, 09 Sep 2021 20:11:48 +1000
+
+nfs-utils (1:2.5.4-1~exp3) experimental; urgency=medium
+
+  * Fix upgrade failure
+    Put idmapd.conf.5 in debian/libnfsidmap1.manpages
+    Closes: #993885
+
+ -- Anibal Monsalve Salazar <anibal@debian.org>  Wed, 08 Sep 2021 21:27:04 +1000
+
+nfs-utils (1:2.5.4-1~exp2) experimental; urgency=medium
+
+  * nfs-utils needs to take over libnfsidmap-regex
+    Closes: #993804
+  * nfs-common depends on libnfsidmap1 (= ${binary:Version})
+    and libnfsidmap1 provides libnfsidmap2
+    Closes: #993789
+  * Fix FTBFS on most architectures
+    Add multiarch-kerberos-paths.patch
+    Closes: #993785
+  * Add mount.nfs-Fix-the-sloppy-option-processing.patch
+    Closes: #992833
+  * Add nfsdcltrack-sqlite-Fix-printf-format.patch
+  * Add nfsdcltrack-nfsdcltrack.c-Fix-printf-format.patch
+  * Add systemd-Fix-non-default-statedir-paths.patch
+  * Add nfsdcltrack-Use-uint64_t-instead-of-time_t.patch
+  * Add nfs-utils-Fix-potential-memory-leaks-in-idmap.patch
+  * Add nfs-utils-Fix-mem-leaks-in-gssd.patch
+  * Add nfs-utils-Fix-mem-leaks-in-krb5_util.patch
+  * Add nfs-utils-Fix-mem-leak-in-mountd.patch
+  * Add nfs-utils-add-install-dep-for-installing-all-depende.patch
+
+ -- Anibal Monsalve Salazar <anibal@debian.org>  Tue, 07 Sep 2021 21:22:46 +1000
+
+nfs-utils (1:2.5.4-1~exp1) experimental; urgency=medium
+
+  * New upstream release
+    Closes: #917706, #933998, #952446, #991631
+  * Standars-Version is 4.6.0
+  * dh compatibility level is 13
+  * Source now includes libnfsidmap
+  * var/lib/nfs/xtab does not exist
+  * sbin/osd_login does not exist
+  * systemd/nfs-config.service does not exist
+  * Drop 21-no-more-var-run.patch
+  * Drop 03-handle-mtab-symlink.patch
+  * Drop 17-multiarch-kerberos-paths.patch
+  * Drop 19-iscsiadm-path.patch
+  * Drop 24-systemd-pipefs_in_run.patch
+  * can't find file to patch: systemd/nfs-config.service
+    Drop 28-nfs-utils_env-location.patch
+  * Drop 29-start-statd-fd-9.patch
+  * Drop 0001-rpc.c-added-include-file-so-UINT16_MAX-is-defined.patch
+  * Drop 30-remove-whitespace-service.patch
+  * Drop fix-glibc2.28-ftbfs.patch
+  * Drop 0010-gssd-replace-non-thread-safe-strtok-with-strsep.patch
+  * Drop 0011-gssd-Duplicate-the-upcall-string-for-error-messages.patch
+  * Drop nfsiostat-replace-list-reserved-word.patch
+  * Drop statd-take-user-id-from-var-lib-nfs-sm.patch
+  * Drop Allow-compilation-to-succeed-with-fno-common.patch
+  * Drop mountstats-Remove-a-shebang.patch
+  * Drop Convert-remaining-python-scripts-to-python3.patch
+  * Drop Removed-a-resource-leak-from-mountd-fsloc.c.patch
+
+ -- Anibal Monsalve Salazar <anibal@debian.org>  Sun, 05 Sep 2021 23:50:09 +1000
+
+nfs-utils (1:1.3.4-6ubuntu1) impish; urgency=medium
+
+  * Merge from Debian unstable (LP: #1929406). Remaining changes:
+    - debian/nfs-common.default: always start idmapd automatically; drop the
+      configuration option.
+      - debian/nfs-common.default: remove NEED_STATD and related comment.
+    - Add 90-gss-free-lucid-sec-context.patch: adjust for changes to the ctx
+      argument of the serialize_krb5_ctx() function.
+    - Add remove-gssproxy.patch: Drop gssproxy as it does not exist in Ubuntu
+    - Fixing nfs-mountd dependency on rpcbind (race condition) by adding
+      "rpcbind.socket" to "nfs-mountd.service"  as a dependency to avoid race
+      conditions:
+      - Add systemd-Fix-nfs-mountd-dependency-on-rpcbind.patch
+    - truncate_gid*.patch: Backports from upstream to prevent truncating UIDs
+      and GIDs over 65536 on certain architectures
+    - d/p/fix-start-ordering-1.patch, d/p/fix-start-ordering-2.patch, d/p/fix-
+      start-ordering-3.patch, d/nfs-kernel-server.install: Fix systemd service
+      start ordering
+    - Depend on network-online.target when starting services.
+      - d/p/lp1918141-use-network-online-target-01.patch: Declare a
+        Wants=network-online.target on all NFS server services.
+      - d/p/lp1918141-use-network-online-target-02.patch: Declare a
+        After=network-online.target on all NFS server services. Thanks to
+        Niklas Edmundsson for helping with the reproducer.
+    - d/nfs-common.postinst: always start nfs-utils.service, so the restart in
+      the #DEBHELPER# section can do its job if needed
+  * Removed patches obsoleted/merged by upstream:
+    - Remove hard-coded dep on libtirpc1; already merged upstream, but
+      previously un-noted
+    - d/nfs-utils_env.sh: alongside RPCSVCGSSDARGS, also export SVCGSSDARGS,
+      which is the variable name expected by the rpc-svcgssd systemd service;
+      already merged upstream, but previously un-noted
+    - d/p/python3.diff obsoleted by
+      d/p/Convert-remaining-python-scripts-to-python3.patch
+  * d/p/nfsiostat-replace-list-reserved-word.patch: re-instated after
+    previous merge removed a patch already merged upstream
+  * d/p/01-sm-notify-in-sbin.patch,
+    d/p/03-handle-mtab-symlink.patch,
+    d/p/17-multiarch-kerberos-paths.patch,
+    d/p/unbreak-blkmapd-rpc_pipefs-run.patch:
+    reverted unnecessary refresh of patches
+
+ -- Dave Jones <dave.jones@canonical.com>  Tue, 06 Jul 2021 11:47:33 +0100
+
+nfs-utils (1:1.3.4-6) unstable; urgency=medium
+
+  * mountstats:  Remove a shebang
+  * Convert remaining python scripts to python3 (Closes: #883194)
+  * debian/control: Switch Recommends from python to python3
+  * Removed a resource leak from mountd/fsloc.c (Closes: #513284)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 28 Jun 2021 09:15:06 +0200
+
+nfs-utils (1:1.3.4-5) unstable; urgency=medium
+
+  [ Felix Lechner ]
+  * Propagate $RPCGSSDOPTS from /etc/default/nfs-common to the system
+    service script for rpc-gssd. (Closes: #846950)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 09 Mar 2021 17:17:42 +0100
+
+nfs-utils (1:1.3.4-4ubuntu3) impish; urgency=medium
+
+  * d/nfs-common.postinst: always start nfs-utils.service, so the restart in
+    the #DEBHELPER# section can do its job if needed (LP: #1928259)
+
+ -- Andreas Hasenack <andreas@canonical.com>  Mon, 24 May 2021 17:59:39 -0300
+
+nfs-utils (1:1.3.4-4ubuntu2) hirsute; urgency=medium
+
+  * Depend on network-online.target when starting services. (LP: #1918141)
+    - d/p/lp1918141-use-network-online-target-01.patch: Declare a
+      Wants=network-online.target on all NFS server services.
+    - d/p/lp1918141-use-network-online-target-02.patch: Declare a
+      After=network-online.target on all NFS server services.
+    Thanks to Niklas Edmundsson for helping with the reproducer.
+
+ -- Sergio Durigan Junior <sergio.durigan@canonical.com>  Mon, 15 Mar 2021 18:26:22 -0400
+
+nfs-utils (1:1.3.4-4ubuntu1) hirsute; urgency=low
+
+  * Merge from Debian unstable.  Remaining changes:
+    - debian/nfs-common.default: always start idmapd automatically; drop
+      the configuration option.
+    - Add 90-gss-free-lucid-sec-context.patch: adjust for changes to the ctx
+      argument of the serialize_krb5_ctx() function.
+    - Add remove-gssproxy.patch: Drop gssproxy as it does not exist in Ubuntu
+    - Fixing nfs-mountd dependency on rpcbind (race condition)
+      by adding "rpcbind.socket" to "nfs-mountd.service"  as a dependency
+      to avoid race conditions:
+      - Add systemd-Fix-nfs-mountd-dependency-on-rpcbind.patch
+    - Convert mountstats and nfsiostat scripts to Python3 and recommend
+      python3 instead of python.
+    - truncate_gid*.patch: Backports from upstream to prevent truncating
+      UIDs and GIDs over 65536 on certain architectures
+    - Remove hard-coded dep on libtirpc1.
+    - d/nfs-utils_env.sh: alongside RPCSVCGSSDARGS, also export SVCGSSDARGS,
+      which is the variable name expected by the rpc-svcgssd systemd service.
+    - d/p/fix-start-ordering-1.patch,
+      d/p/fix-start-ordering-2.patch,
+      d/p/fix-start-ordering-3.patch,
+      d/nfs-kernel-server.install:
+      Fix systemd service start ordering
+  * Dropped changes, included in Debian:
+    - Allow compilation to succeed with -fno-common
+    - debian/nfs-common.postinst: don't make /var/lib/nfs owned by statd.
+    - debian/patches/CVE-2019-3689.patch: take user-id from
+      /var/lib/nfs/sm in support/nsm/file.c, utils/statd/sm-notify.man,
+      utils/statd/statd.man.
+    - d/p/nfsiostat-replace-list-reserved-word.patch: fix nfsiostat crash due
+      to using 'list' as a variable name.
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Mon, 26 Oct 2020 09:25:58 -0700
+
+nfs-utils (1:1.3.4-4) unstable; urgency=medium
+
+  * Allow compilation to succeed with -fno-common (Closes: #957608)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 26 Jul 2020 14:02:00 +0200
+
+nfs-utils (1:1.3.4-3) unstable; urgency=medium
+
+  [ Salvatore Bonaccorso ]
+  * nfsiostat: replace 'list' reserved word.
+    Thanks to Matthew Ruffell <matthew.ruffell@canonical.com>
+    (Closes: #925943, LP: #1821261)
+  * Remove Anibal Monsalve Salazar from Uploaders on request of MIA team.
+    Thanks to Anibal Monsalve Salazar for all previous work done on nfs-utils.
+    (Closes: #925089)
+  * statd: take user-id from /var/lib/nfs/sm (CVE-2019-3689) (Closes: #940848)
+  * Don't make /var/lib/nfs owned by statd.
+    Only sm and sm.bak need to be accessible by statd or sm-notify after
+    they drop privileges.
+  * debian/control: Point Vcs URLs to kernel-team namespace repository
+  * debian/control: Add myself to Uploaders
+
+  [ Andreas Hasenack ]
+  * debian/nfs-utils_env.sh: Fix mismatching [RPC]SVCGSSDOPTS defaults
+    Export SVCGSSDARGS, which is the variable name expected by the
+    rpc-svcgssd systemd service. The old variable is still being
+    exported to prevent upgrades from breaking for those who may
+    have overridden the systemd service to work around the bug.
+    (Closes: #892654)
+
+  [ Ben Hutchings ]
+  * debian/control: Remove Daniel Pocock from Uploaders. (Closes: #953441)
+  * debian/control: Delete wrong Homepage fields for binary packages
+  * debian/control: Change Homepage to HTTP-S URL
+  * debian/copyright: Update upstream source URL to match debian/watch
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Fri, 13 Mar 2020 05:16:46 +0100
+
+nfs-utils (1:1.3.4-2.5ubuntu6) groovy; urgency=medium
+
+  * Allow compilation to succeed with -fno-common (Closes: #957608)
+    (cherry picked from 1:1.3.4-4)
+
+ -- Julian Andres Klode <juliank@ubuntu.com>  Wed, 16 Sep 2020 16:20:55 +0200
+
+nfs-utils (1:1.3.4-2.5ubuntu5) groovy; urgency=medium
 
   * SECURITY UPDATE: privilege escalation via directory permissions
     - debian/patches/CVE-2019-3689.patch: take user-id from
@@ -56,7 +883,7 @@ nfs-utils (1:1.3.4-2.5ubuntu3.3) focal-security; urgency=medium
 
  -- Marc Deslauriers <marc.deslauriers@ubuntu.com>  Wed, 17 Jun 2020 08:42:59 -0400
 
-nfs-utils (1:1.3.4-2.5ubuntu3.1) focal; urgency=medium
+nfs-utils (1:1.3.4-2.5ubuntu4) groovy; urgency=medium
 
   [ Rodrigo Barbieri ]
   * d/p/fix-start-ordering-1.patch,
@@ -65,7 +892,7 @@ nfs-utils (1:1.3.4-2.5ubuntu3.1) focal; urgency=medium
     d/nfs-kernel-server.install:
     - Fix systemd service start ordering (LP: #1871214)
 
- -- Dariusz Gadomski <dgadomski@ubuntu.com>  Fri, 29 May 2020 08:32:24 +0200
+ -- Dariusz Gadomski <dariusz.gadomski@canonical.com>  Thu, 28 May 2020 17:45:23 -0400
 
 nfs-utils (1:1.3.4-2.5ubuntu3) focal; urgency=medium
 
@@ -586,7 +1413,7 @@ nfs-utils (1:1.2.8-9ubuntu1) utopic; urgency=medium
 nfs-utils (1:1.2.8-9) unstable; urgency=medium
 
   * debian/patches/22-mountd-fix-segfault-in-add_name-with-newer-gcc-
-    compi.patch: cherry-pick fix from upstream for a segfault in 
+    compi.patch: cherry-pick fix from upstream for a segfault in
     add_name with newer gcc compilers.  Closes: #757835, LP: #1355829.
 
  -- Steve Langasek <vorlon@debian.org>  Tue, 12 Aug 2014 17:12:38 -0700
@@ -1069,7 +1896,7 @@ nfs-utils (1:1.2.5-1) unstable; urgency=low
     - idmapd: correctly convert ocal encoded fields (Closes: #640105).
     - svcgssd: use correct defaults in call to gss_set_allowable_enctypes
       (Closes: #637660).
-    - rpc.statd: Bind downcall socket to loopback address (Closes: #457095). 
+    - rpc.statd: Bind downcall socket to loopback address (Closes: #457095).
   * Add version to build-dep on libnfsidmap-dev (Closes: #639691).
   * debian/idmapd.conf: Comment Domain (Closes: #638607).
   * debian/patches/17-multiarch-kerberos-paths.patch (Closes: #642797).
@@ -1192,7 +2019,7 @@ nfs-utils (1:1.2.3-1) unstable; urgency=low
     - 14-allow-address-without-name : removed
     - 15-mountd-fix-path-comparison-for-v4-crossmnt : removed
     - 16-mount.nfs.man-nfs.man-update-distinction-between-fstypes:
-      part about nfs.man removed and 
+      part about nfs.man removed and
       renamed to 16-mount.nfs.man-update-distinction-between-fstypes
     - mountd: fix --manage-gids hang due to int/uint bug (0f05c8a)
       (Closes: #528939,585085)
@@ -1200,10 +2027,10 @@ nfs-utils (1:1.2.3-1) unstable; urgency=low
       (Closes: #612933)
     - mount: Mount should retry unreachable hosts (5a355f4)
       (Closes: #560388)
-    - Try to use kernel function to determine supported Kerberos 
+    - Try to use kernel function to determine supported Kerberos
       enctypes (258f10f) (Closes: #474037)
     - nfs-common: Add Recommends python for mountstats and nfsiostat
-  * Make sure everything is shipped (inspired by #594933) 
+  * Make sure everything is shipped (inspired by #594933)
   * nfs-common.init: Enable idmapd by default (Closes: #610363)
   * Install bug scripts to ease debuging
   * Build depend on libtirpc-dev and enable IPv6 (Closes: #441361)
@@ -1288,7 +2115,7 @@ nfs-utils (1:1.2.2-4ubuntu3) natty; urgency=low
 
 nfs-utils (1:1.2.2-4ubuntu2) natty; urgency=low
 
-  * debian/nfs-common.statd.upstart, 
+  * debian/nfs-common.statd.upstart,
     debian/nfs-common.statd-mounting.upstart: refactor startup to wait for
     local-filesystems. (LP: #525154)
   * debian/control: depend on portmap version that sets ON_BOOT=y and
@@ -1305,8 +2132,8 @@ nfs-utils (1:1.2.2-4ubuntu1) natty; urgency=low
       debian/rules: drop nfs-common init script in favor of upstart jobs, and
       build-depend on debhelper (>= 7.3.15ubuntu3) for correct upstart init
       handling.
-    - debian/control: 
-      + depend on the upstart-using version of portmap, 6.0-10ubuntu1; and 
+    - debian/control:
+      + depend on the upstart-using version of portmap, 6.0-10ubuntu1; and
         drop the alternative depends on rpcbind, which hasn't been converted.
       + depend on portmap 6.0-10ubuntu1.
     - debian/nfs-kernel-server.postinst: don't call "invoke-rc.d nfs-common"
@@ -1334,8 +2161,8 @@ nfs-utils (1:1.2.2-3) unstable; urgency=low
 nfs-utils (1:1.2.2-2) unstable; urgency=low
 
   [ Vagrant Cascadian ]
-  * Ensure files under /var/lib/nfs/ are owned by statd user. 
-    Closes: #574510 
+  * Ensure files under /var/lib/nfs/ are owned by statd user.
+    Closes: #574510
 
   [ Anibal Monsalve Salazar ]
   * Fix out-of-date-standards-version
@@ -1367,7 +2194,7 @@ nfs-utils (1:1.2.2-1ubuntu1) maverick; urgency=low
 nfs-utils (1:1.2.2-1) unstable; urgency=low
 
   [ Anibal Monsalve Salazar ]
-  * New upstream release 
+  * New upstream release
     Build depend on libcap-dev
     Set configure option --enable-nfsv41
   * X-ref nfsd({7,8})
@@ -1414,12 +2241,12 @@ nfs-utils (1:1.2.1-1.1) unstable; urgency=low
 
   * Non-maintainer upload.
   * Disable tirpc (Closes: #562729, #562757, #562910)
- 
+
  -- Alexander Wirt <formorer@debian.org>  Wed, 06 Jan 2010 20:26:54 +0100
 
 nfs-utils (1:1.2.1-1) unstable; urgency=low
 
-  * New upstream release 
+  * New upstream release
   * Update debian/watch
   * Debian source format is 3.0 (quilt)
     Don't build depend on quilt
@@ -1629,7 +2456,7 @@ nfs-utils (1:1.1.5-2) unstable; urgency=low
 
 nfs-utils (1:1.1.5-1) experimental; urgency=low
 
-  * New upstream release 
+  * New upstream release
   * Update debian/watch
 
  -- Anibal Monsalve Salazar <anibal@debian.org>  Fri, 06 Mar 2009 13:36:45 +1100
@@ -1705,7 +2532,7 @@ nfs-utils (1:1.1.2-6) unstable; urgency=high
     (Closes: #490181)
   * Bump to Standards-Version 3.8.0.1.
     * Added README.source with basic information on use of quilt.
-    * Added (adapted from the example in Policy) debian/rules code to 
+    * Added (adapted from the example in Policy) debian/rules code to
       parse DEB_BUILD_OPTIONS and support noopt and parallel= targets.
       (nostrip is already handled by debhelper.)
   * Remove DEB_HOST_ARCH setting from debian/rules, as it was not used
@@ -1743,7 +2570,7 @@ nfs-utils (1:1.1.2-4ubuntu1) intrepid; urgency=low
     - Update maintainer to Ubuntu
     - Adjust initscripts version dependancy.
     - 100-gssd-use-kernel-supported-enctypes.diff:
-      Allow to use encryption types that the kernel supports, not just 
+      Allow to use encryption types that the kernel supports, not just
       des-cbc-crc. This patch was dropped by mistake when merging. Start the
       numbering from 100 to more easily distinguish which patches are ours.
 
@@ -1752,7 +2579,7 @@ nfs-utils (1:1.1.2-4ubuntu1) intrepid; urgency=low
 nfs-utils (1:1.1.2-4) unstable; urgency=low
 
   * 04-eacces-is-a-permanent-error.patch: New patch mirroring upstream git;
-    makes the text-based mounting interface (used with kernel >= 2.6.23) 
+    makes the text-based mounting interface (used with kernel >= 2.6.23)
     treat "access denied" as a permanent instead of a temporary error.
     (Closes: #476128)
 
@@ -1781,7 +2608,7 @@ nfs-utils (1:1.1.2-2ubuntu2.1) hardy-proposed; urgency=low
 nfs-utils (1:1.1.2-2ubuntu2) hardy; urgency=low
 
   * 100-gssd-use-kernel-supported-enctypes.diff:
-    Allow to use encryption types that the kernel supports, not just 
+    Allow to use encryption types that the kernel supports, not just
     des-cbc-crc. This patch was dropped by mistake when merging. Start the
     numbering from 100 to more easily distinguish which patches are ours.
 
@@ -1925,7 +2752,7 @@ nfs-utils (1:1.1.1-4) unstable; urgency=low
   * Patch init script to allow not running rpc.statd or rpc.mountd (via
     settings in /etc/default/), since they are not needed for an NFSv4-only
     setup; patch adapted from David Härdeman. (Closes: #448234)
-  * Clarify language in the exportfs man page; patch adapted from 
+  * Clarify language in the exportfs man page; patch adapted from
     David Liontooth. (Closes: #443591)
 
  -- Steinar H. Gunderson <sesse@debian.org>  Mon, 29 Oct 2007 18:33:15 +0100
@@ -2023,7 +2850,7 @@ nfs-utils (1:1.1.1~git-20070706-1) unstable; urgency=low
 nfs-utils (1:1.1.0-14) unstable; urgency=low
 
   * Install mount.nfs setuid directly instead of doing dpkg-statoverride in
-    the postinst. Clear the dpkg-statoverride status in the postinst script 
+    the postinst. Clear the dpkg-statoverride status in the postinst script
     on upgrades from earlier versions for cleanness. (Closes: #435258)
 
  -- Steinar H. Gunderson <sesse@debian.org>  Sun, 05 Aug 2007 20:06:53 +0200
@@ -2031,7 +2858,7 @@ nfs-utils (1:1.1.0-14) unstable; urgency=low
 nfs-utils (1:1.1.0-13) unstable; urgency=low
 
   * 06-gssd-manpage-typo.patch: New patch from A Costa, fixes a typo in the
-    gssd man page. (Closes: #434665) 
+    gssd man page. (Closes: #434665)
   * Sort debian/patches/series, so the patches are applied in the expected
     order. This also fixes a hunk offset when applying the patches.
 
@@ -2081,7 +2908,7 @@ nfs-utils (1:1.1.0-10) unstable; urgency=high
   * In the LSB header for nfs-common.init, add $portmap to Required-Start.
     Also add the S run level to Default-Start, to match the above change.
   * Include {mount,umount}.nfs man pages in the nfs-common package -- thanks
-    to Neil Brown for spotting this. 
+    to Neil Brown for spotting this.
 
  -- Steinar H. Gunderson <sesse@debian.org>  Mon, 16 Jul 2007 18:04:52 +0200
 
@@ -2128,7 +2955,7 @@ nfs-utils (1:1.1.0-5) unstable; urgency=low
 nfs-utils (1:1.1.0-4) unstable; urgency=low
 
   * Change the obsolete /proc/nfs/nfsd path in the init script so it matches
-    the current path; patch by Bart Cortooms. 
+    the current path; patch by Bart Cortooms.
 
  -- Steinar H. Gunderson <sesse@debian.org>  Fri, 08 Jun 2007 12:18:07 +0200
 
@@ -2323,7 +3150,7 @@ nfs-utils (1:1.0.10-6~quilt.6) experimental; urgency=low
 nfs-utils (1:1.0.10-6~quilt.5) experimental; urgency=low
 
   * Make quilt build-dependency versioned to (>= 0.40), as per lintian
-    recommendation. 
+    recommendation.
   * Change a hyphen (-) to a minus (\-) in 07-exports-default-options.patch.
 
  -- Steinar H. Gunderson <sesse@debian.org>  Thu,  4 Jan 2007 15:04:05 +0100
@@ -2397,7 +3224,7 @@ nfs-utils (1:1.0.10-6~quilt.0) experimental; urgency=low
     copyright exception.
   * Change "#!/usr/bin/make -f" in debian/rules to "#! /usr/bin/make -f", for
     good measure.
-  * Make indentation in debian/rules consistent. 
+  * Make indentation in debian/rules consistent.
 
  -- Steinar H. Gunderson <sesse@debian.org>  Tue, 26 Dec 2006 21:03:50 +0100
 
@@ -2510,7 +3337,7 @@ nfs-utils (1:1.0.9-9) unstable; urgency=medium
 
   * Patched svc_socket.c to define __bzero only on ia64.
     Closes: #384552.
- 
+
  -- Anibal Monsalve Salazar <anibal@debian.org>  Fri, 25 Aug 2006 11:45:07 +1000
 
 nfs-utils (1:1.0.9-8) unstable; urgency=medium
@@ -2613,7 +3440,7 @@ nfs-utils (1:1.0.9-1) unstable; urgency=high
 nfs-utils (1:1.0.8+1.0.9pre1-4) unstable; urgency=low
 
   * Back out having separate mount.nfs; this is in line with upstream, who
-    wants to delay this to 1.0.10. 
+    wants to delay this to 1.0.10.
     * No longer install {mount,umount}.{nfs,nfs4} to /sbin.
     * Revert patch applied in -3.
 
@@ -2645,9 +3472,9 @@ nfs-utils (1:1.0.8+1.0.9pre1-1) unstable; urgency=low
       * Use 65534 instead of -2 for anonuid, update manpage accordingly.
       * Debian-specific information in exports man page.
       * Don't use -rpath for gssd.
-      * Hardcode default mapping in svcgssd. Adjust patch to use uid/gid 
+      * Hardcode default mapping in svcgssd. Adjust patch to use uid/gid
         65534 instead of -2, for consistency; also remove double error
-        message. 
+        message.
       * Spelling fixes in nfsstat, showmount and statd man pages.
     * Supports options to bind to specific IPs. (Closes: #246939, #312720)
     * Include mount.nfs and friends, which will over time take over the job of
@@ -2741,7 +3568,7 @@ nfs-utils (1:1.0.8-3) unstable; urgency=low
   * Clear out obsolete (pre-sarge) debconf and rc.d purging from postinst
     script. (Same as in 1:1.0.7-10, but for nfs-kernel-server too, not just
     nfs-common.) Minor style cleanup.
-  * Include the md5sum for /etc/default/nfs-kernel-server from 1:1.0.7-13, 
+  * Include the md5sum for /etc/default/nfs-kernel-server from 1:1.0.7-13,
     to make ucf not complain when upgrading from that version.
 
  -- Steinar H. Gunderson <sesse@debian.org>  Sat,  3 Jun 2006 11:00:14 +0200
@@ -3121,7 +3948,7 @@ nfs-utils (1:1.0.5-1) unstable; urgency=high
   * New upstream version:
     > Don't use freed memory.  (closes: #201311, #201598, #201873)
     > Fix mountd -o arg.  (closes: #197355)
-  
+
  -- Chip Salzenberg <chip@debian.org>  Thu, 24 Jul 2003 15:40:12 -0400
 
 nfs-utils (1:1.0.3-2) unstable; urgency=high
@@ -3282,7 +4109,7 @@ nfs-utils (1:0.3.2-2) unstable; urgency=low
   * Rebuild with new libc.  (closes: #97252, #97455, #99829, #100317)
   * Fix typo in nfs-kernel-server init script.  (closes: #100380)
   * Start all daemons in root directory.
-  
+
  -- Chip Salzenberg <chip@debian.org>  Fri, 15 Jun 2001 15:57:18 -0700
 
 nfs-utils (1:0.3.2-1) unstable; urgency=low
@@ -3328,7 +4155,7 @@ nfs-utils (1:0.2.1-5) unstable; urgency=low
         static callback RPC procedure.
   * Store return values of getc and getopt in int variables:
     they can return EOF, which requires an int. (From NMU)
-  
+
  -- Chip Salzenberg <chip@debian.org>  Sat, 20 Jan 2001 20:03:07 -0800
 
 nfs-utils (1:0.2.1-4) unstable; urgency=medium
@@ -3492,4 +4319,3 @@ nfs-utils (0.1.3-1) unstable; urgency=low
   * Start following CVS tree at SourceForge.
 
  -- Chip Salzenberg <chip@valinux.com>  Fri,  3 Dec 1999 20:00:00 -0800
-

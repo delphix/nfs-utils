@@ -3,4 +3,4 @@ usr/share/man/man8/statd.8 usr/share/man/man8/rpc.statd.8
 usr/share/man/man8/idmapd.8 usr/share/man/man8/rpc.idmapd.8
 usr/share/man/man8/sm-notify.8 usr/share/man/man8/rpc.sm-notify.8
 usr/share/man/man8/svcgssd.8 usr/share/man/man8/rpc.svcgssd.8
-/dev/null /lib/systemd/system/nfs-common.service
+/dev/null /usr/lib/systemd/system/nfs-common.service

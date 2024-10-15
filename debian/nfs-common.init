@@ -20,7 +20,6 @@ DEFAULTFILE=/etc/default/nfs-common
 NEED_STATD=
 NEED_GSSD=
 PIPEFS_MOUNTPOINT=/run/rpc_pipefs
-RPCGSSDOPTS=
 if [ -f $DEFAULTFILE ]; then
     . $DEFAULTFILE
 fi
@@ -28,7 +27,7 @@ fi
 . /lib/lsb/init-functions
 
 # Exit if required binaries are missing.
-[ -x /sbin/rpc.statd ] || exit 0
+[ -x /usr/sbin/rpc.statd ] || exit 0
 
 #
 # Parse the fstab file, and determine whether we need gssd. (The
@@ -40,7 +39,7 @@ AUTO_NEED_GSSD=no
 if [ -f /etc/fstab ]; then
     exec 9<&0 </etc/fstab
 
-    while read DEV MTPT FSTYPE OPTS REST
+    while read -r DEV _ _ OPTS _
     do
 	case $DEV in
 	    ''|\#*)
@@ -87,7 +86,7 @@ case "$NEED_GSSD" in
 esac
 
 do_modprobe() {
-    if [ -x /sbin/modprobe -a -f /proc/modules ]
+    if [ -x /sbin/modprobe ] && [ -f /proc/modules ]
     then
         modprobe -q "$1" || true
     fi
@@ -134,7 +133,7 @@ case "$1" in
 	    fi
 	    start-stop-daemon --start --oknodo --quiet \
 		--pidfile /run/rpc.statd.pid \
-	        --exec /sbin/rpc.statd -- $STATDOPTS
+	        --exec /usr/sbin/rpc.statd
 	    RET=$?
 	    if [ $RET != 0 ]; then
 	        log_end_msg $RET
@@ -184,7 +183,7 @@ case "$1" in
 		    fi
 
 		    start-stop-daemon --start --oknodo --quiet \
-			    --exec /usr/sbin/rpc.gssd -- $RPCGSSDOPTS
+			    --exec /usr/sbin/rpc.gssd
 		    RET=$?
 	            if [ $RET != 0 ]; then
         	        log_end_msg $RET

@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/param.h>
 #include <sys/syslog.h>
 #include <arpa/inet.h>
@@ -28,10 +28,15 @@
 #include <netdb.h>
 #include <errno.h>
 #include <grp.h>
+#include <netinet/in.h>
+#include <arpa/nameser.h>
+#include <resolv.h>
 
+#include "conffile.h"
 #include "sockaddr.h"
 #include "xlog.h"
 #include "nsm.h"
+#include "nfslib.h"
 #include "nfsrpc.h"
 
 /* glibc before 2.3.4 */
@@ -43,6 +48,9 @@
 #define NSM_MAX_TIMEOUT	120	/* don't make this too big */
 
 #define NLM_END_GRACE_FILE	"/proc/fs/lockd/nlm_end_grace"
+
+int lift_grace = 1;
+int force = 0;
 
 struct nsm_host {
 	struct nsm_host *	next;
@@ -87,6 +95,7 @@ smn_lookup(const char *name)
 	};
 	int error;
 
+	res_init();
 	error = getaddrinfo(name, NULL, &hint, &ai);
 	if (error != 0) {
 		xlog(D_GENERAL, "getaddrinfo(3): %s", gai_strerror(error));
@@ -172,7 +181,7 @@ smn_verify_my_name(const char *name)
 	case 0:
 		/* @name was a presentation address */
 		retval = smn_get_hostname(ai->ai_addr, ai->ai_addrlen, name);
-		freeaddrinfo(ai);
+		nfs_freeaddrinfo(ai);
 		if (retval == NULL)
 			return NULL;
 		break;
@@ -246,8 +255,7 @@ static void smn_forget_host(struct nsm_host *host)
 	free((void *)host->my_name);
 	free((void *)host->mon_name);
 	free(host->name);
-	if (host->ai)
-		freeaddrinfo(host->ai);
+	nfs_freeaddrinfo(host->ai);
 
 	free(host);
 }
@@ -423,7 +431,7 @@ retry:
 	if (srcport) {
 		if (bind(sock, ai->ai_addr, ai->ai_addrlen) == -1) {
 			xlog(L_ERROR, "Failed to bind RPC socket: %m");
-			freeaddrinfo(ai);
+			nfs_freeaddrinfo(ai);
 			(void)close(sock);
 			return -1;
 		}
@@ -433,7 +441,7 @@ retry:
 		if (smn_bindresvport(sock, ai->ai_addr) == -1) {
 			xlog(L_ERROR,
 				"bindresvport on RPC socket failed: %m");
-			freeaddrinfo(ai);
+			nfs_freeaddrinfo(ai);
 			(void)close(sock);
 			return -1;
 		}
@@ -442,13 +450,13 @@ retry:
 		se = getservbyport((int)nfs_get_port(ai->ai_addr), "udp");
 		if (se != NULL && retry_cnt < 100) {
 			retry_cnt++;
-			freeaddrinfo(ai);
+			nfs_freeaddrinfo(ai);
 			(void)close(sock);
 			goto retry;
 		}
 	}
 
-	freeaddrinfo(ai);
+	nfs_freeaddrinfo(ai);
 	return sock;
 }
 
@@ -473,11 +481,29 @@ nsm_lift_grace_period(void)
 	close(fd);
 	return;
 }
+inline static void 
+read_smnotify_conf(char **argv)
+{
+	char *s;
+
+	conf_init_file(NFS_CONFFILE);
+	xlog_set_debug("sm-notify");
+	opt_max_retry = conf_get_num("sm-notify", "retry-time", opt_max_retry / 60) * 60;
+	opt_srcport = conf_get_str("sm-notify", "outgoing-port");
+	opt_srcaddr = conf_get_str("sm-notify", "outgoing-addr");
+	lift_grace = conf_get_bool("sm-notify", "lift-grace", lift_grace);
+
+	s = conf_get_str("statd", "state-directory-path");
+	if (s && !nsm_setup_pathnames(argv[0], s))
+		exit(1);
+	opt_update_state = conf_get_bool("sm-notify", "update-state", opt_update_state);
+	force = conf_get_bool("sm-notify", "force", force);
+}
 
 int
 main(int argc, char **argv)
 {
-	int	c, sock, force = 0;
+	int	c, sock;
 	char *	progname;
 
 	progname = strrchr(argv[0], '/');
@@ -485,6 +511,9 @@ main(int argc, char **argv)
 		progname++;
 	else
 		progname = argv[0];
+
+	/* Read in config setting */
+	read_smnotify_conf(argv);
 
 	while ((c = getopt(argc, argv, "dm:np:v:P:f")) != -1) {
 		switch (c) {
@@ -551,14 +580,15 @@ usage:		fprintf(stderr,
 		if (name == NULL)
 			exit(1);
 
-		strncpy(nsm_hostname, name, sizeof(nsm_hostname));
+		strncpy(nsm_hostname, name, sizeof(nsm_hostname)-1);
 		free(name);
 	}
 
 	(void)nsm_retire_monitored_hosts();
 	if (nsm_load_notify_list(smn_get_host) == 0) {
 		xlog(D_GENERAL, "No hosts to notify; exiting");
-		nsm_lift_grace_period();
+		if (lift_grace)
+			nsm_lift_grace_period();
 		return 0;
 	}
 

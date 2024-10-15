@@ -5,6 +5,8 @@ if CONFIG_SVCGSS
 man8_MANS	+= svcgssd.man
 endif
 
+AM_CPPFLAGS += -I ../../support/nfsidmap
+
 RPCPREFIX	= rpc.
 KPREFIX		= @kprefix@
 sbin_PREFIXED	= gssd
@@ -44,7 +46,7 @@ gssd_SOURCES = \
 	write_bytes.h
 
 gssd_LDADD = \
-	../../support/nfs/libnfs.a \
+	../../support/nfs/libnfs.la \
 	$(LIBEVENT) \
 	$(RPCSECGSS_LIBS) \
 	$(KRBLIBS) \
@@ -65,7 +67,6 @@ gssd_CFLAGS = \
 svcgssd_SOURCES = \
 	$(COMMON_SRCS) \
 	svcgssd.c \
-	svcgssd_main_loop.c \
 	svcgssd_mech2file.c \
 	svcgssd_proc.c \
 	svcgssd_krb5.c \
@@ -74,8 +75,10 @@ svcgssd_SOURCES = \
 	svcgssd.h
 
 svcgssd_LDADD = \
-	../../support/nfs/libnfs.a \
-	$(RPCSECGSS_LIBS) $(LIBNFSIDMAP) \
+	../../support/nfs/libnfs.la \
+	../../support/nfsidmap/libnfsidmap.la \
+	$(LIBEVENT) \
+	$(RPCSECGSS_LIBS) \
 	$(KRBLIBS) $(GSSAPI_LIBS) $(LIBTIRPC)
 
 svcgssd_LDFLAGS = $(KRBLDFLAGS)

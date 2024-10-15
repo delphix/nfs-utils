@@ -1,0 +1,34 @@
+#!/bin/sh
+
+set -e
+
+cleanup() {
+    umount /mnt || :
+}
+
+hello="Hello from NFS server $$"
+mkdir -p /storage
+echo "${hello}" > /storage/hello.txt
+
+echo "/storage *(sec=sys,rw,sync,no_subtree_check)" > /etc/exports
+exportfs -rav
+
+# stop statd if it's running, because we will check later if it
+# was started automatically for the NFSv3 mount as it should
+if pidof rpc.statd > /dev/null 2>&1; then
+    systemctl stop rpc-statd.service > /dev/null 2>&1 || :
+    pidof rpc.statd > /dev/null 2>&1 && {
+        echo "couldn't kill rpc.statd before the NFSv3 test"
+        exit 1
+    }
+fi
+
+mount localhost:/storage /mnt -o vers=3
+grep "${hello}" /mnt/hello.txt
+
+pidof rpc.statd > /dev/null 2>&1 || {
+    echo "rpc.statd isn't running after the NVSv3 mount, and it should..."
+    exit 1
+}
+
+findmnt -n -t nfs | grep -E "/storage.*vers=3.*sec=sys"

@@ -10,16 +10,22 @@
 #include <config.h>
 #endif
 
+#include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/param.h>
+#include <fcntl.h>
 #include <netinet/in.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <dirent.h>
 #include <errno.h>
 #include "xmalloc.h"
 #include "nfslib.h"
 #include "exportfs.h"
+#include "nfsd_path.h"
+#include "xlog.h"
+#include "reexport.h"
 
 exp_hash_table exportlist[MCL_MAXTYPES] = {{NULL, {{NULL,NULL}, }}, }; 
 static int export_hash(char *);
@@ -29,9 +35,34 @@ static void	export_init(nfs_export *exp, nfs_client *clp,
 static void	export_add(nfs_export *exp);
 static int	export_check(const nfs_export *exp, const struct addrinfo *ai,
 				const char *path);
-static nfs_export *
-		export_allowed_internal(const struct addrinfo *ai,
-				const char *path);
+
+/* Return a real path for the export. */
+static void
+exportent_mkrealpath(struct exportent *eep)
+{
+	const char *chroot = nfsd_path_nfsd_rootdir();
+	char *ret = NULL;
+
+	if (chroot) {
+		char buffer[PATH_MAX];
+		if (realpath(chroot, buffer))
+			ret = nfsd_path_prepend_dir(buffer, eep->e_path);
+		else
+			xlog(D_GENERAL, "%s: failed to resolve path %s: %m",
+					__func__, chroot);
+	}
+	if (!ret)
+		ret = xstrdup(eep->e_path);
+	eep->e_realpath = ret;
+}
+
+char *
+exportent_realpath(struct exportent *eep)
+{
+	if (!eep->e_realpath)
+		exportent_mkrealpath(eep);
+	return eep->e_realpath;
+}
 
 void
 exportent_release(struct exportent *eep)
@@ -42,6 +73,7 @@ exportent_release(struct exportent *eep)
 	free(eep->e_fslocdata);
 	free(eep->e_uuid);
 	xfree(eep->e_hostname);
+	xfree(eep->e_realpath);
 }
 
 static void
@@ -70,20 +102,25 @@ static void warn_duplicated_exports(nfs_export *exp, struct exportent *eep)
 /**
  * export_read - read entries from /etc/exports
  * @fname: name of file to read from
+ * @ignore_hosts: don't check validity of host names
  *
  * Returns number of read entries.
+ * @ignore_hosts can be set when the host names won't be used
+ * and when getting delays or errors due to problems with
+ * hostname looking is not acceptable.
  */
 int
-export_read(char *fname)
+export_read(char *fname, int ignore_hosts)
 {
 	struct exportent	*eep;
 	nfs_export		*exp;
 
 	int volumes = 0;
+	int reexport_found = 0;
 
 	setexportent(fname, "r");
 	while ((eep = getexportent(0,1)) != NULL) {
-		exp = export_lookup(eep->e_hostname, eep->e_path, 0);
+		exp = export_lookup(eep->e_hostname, eep->e_path, ignore_hosts);
 		if (!exp) {
 			if (export_create(eep, 0))
 				/* possible complaints already logged */
@@ -91,7 +128,25 @@ export_read(char *fname)
 		}
 		else
 			warn_duplicated_exports(exp, eep);
+
+		if (eep->e_reexport)
+			reexport_found = 1;
 	}
+
+	if (reexport_found) {
+		for (int i = 0; i < MCL_MAXTYPES; i++) {
+			for (exp = exportlist[i].p_head; exp; exp = exp->m_next) {
+				if (exp->m_export.e_reexport)
+					continue;
+
+				if (exp->m_export.e_flags & NFSEXP_FSID) {
+					xlog(L_ERROR, "When a reexport= option is present no manully assigned numerical fsid= options are allowed");
+					return -1;
+				}
+			}
+		}
+	}
+
 	endexportent();
 
 	return volumes;
@@ -100,13 +155,14 @@ export_read(char *fname)
 /**
  * export_d_read - read entries from /etc/exports.
  * @fname: name of directory to read from
+ * @ignore_hosts: don't check validity of host names
  *
  * Returns number of read entries.
  * Based on mnt_table_parse_dir() in
  *  util-linux-ng/shlibs/mount/src/tab_parse.c
  */
 int
-export_d_read(const char *dname)
+export_d_read(const char *dname, int ignore_hosts)
 {
 	int n = 0, i;
 	struct dirent **namelist = NULL;
@@ -150,7 +206,7 @@ export_d_read(const char *dname)
 			continue;
 		}
 
-		volumes += export_read(fname);
+		volumes += export_read(fname, ignore_hosts);
 	}
 
 	for (i = 0; i < n; i++)
@@ -291,59 +347,6 @@ export_find(const struct addrinfo *ai, const char *path)
 	return NULL;
 }
 
-static nfs_export *
-export_allowed_internal(const struct addrinfo *ai, const char *path)
-{
-	nfs_export	*exp;
-	int		i;
-
-	for (i = 0; i < MCL_MAXTYPES; i++) {
-		for (exp = exportlist[i].p_head; exp; exp = exp->m_next) {
-			if (!exp->m_mayexport ||
-			    !export_check(exp, ai, path))
-				continue;
-			return exp;
-		}
-	}
-
-	return NULL;
-}
-
-/**
- * export_allowed - determine if this export is allowed
- * @ai: pointer to addrinfo for client
- * @path: '\0'-terminated ASCII string containing export path
- *
- * Returns a pointer to nfs_export data matching @ai and @path,
- * or NULL if the export is not allowed.
- */
-nfs_export *
-export_allowed(const struct addrinfo *ai, const char *path)
-{
-	nfs_export		*exp;
-	char			epath[MAXPATHLEN+1];
-	char			*p = NULL;
-
-	if (path [0] != '/') return NULL;
-
-	strncpy(epath, path, sizeof (epath) - 1);
-	epath[sizeof (epath) - 1] = '\0';
-
-	/* Try the longest matching exported pathname. */
-	while (1) {
-		exp = export_allowed_internal(ai, epath);
-		if (exp)
-			return exp;
-		/* We have to treat the root, "/", specially. */
-		if (p == &epath[1]) break;
-		p = strrchr(epath, '/');
-		if (p == epath) p++;
-		*p = '\0';
-	}
-
-	return NULL;
-}
-
 /**
  * export_lookup - search hash table for export entry
  * @hname: '\0'-terminated ASCII string containing client hostname to look for
@@ -438,4 +441,31 @@ export_hash(char *str)
 	unsigned int num = strtoint(str);
 
 	return num % HASH_TABLE_SIZE;
+}
+
+int export_test(struct exportent *eep, int with_fsid)
+{
+	char *path = eep->e_path;
+	int flags = eep->e_flags | (with_fsid ? NFSEXP_FSID : 0);
+	/* beside max path, buf size should take protocol str into account */
+	char buf[NFS_MAXPATHLEN+1+64] = { 0 };
+	char *bp = buf;
+	int len = sizeof(buf);
+	int fd, n;
+
+	n = snprintf(buf, len, "-test-client- ");
+	bp += n;
+	len -= n;
+	qword_add(&bp, &len, path);
+	if (len < 1)
+		return 0;
+	snprintf(bp, len, " 3 %d 65534 65534 0\n", flags);
+	fd = open("/proc/net/rpc/nfsd.export/channel", O_WRONLY);
+	if (fd < 0)
+		return 0;
+	n = nfsd_path_write(fd, buf, strlen(buf));
+	close(fd);
+	if (n < 0)
+		return 0;
+	return 1;
 }

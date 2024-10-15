@@ -23,6 +23,29 @@ is the NFSv4 ID <-> name mapping daemon.  It provides functionality to
 the NFSv4 kernel client and server, to which it communicates via
 upcalls, by translating user and group IDs to names, and vice versa.
 .Pp
+The system derives the
+.Em user
+part of the string by performing a password or group lookup.
+The lookup mechanism is configured in
+.Pa /etc/idmapd.conf
+.Pp
+By default, the
+.Em domain
+part of the string is the system's DNS domain name.
+It can also be specified in
+.Pa /etc/idmapd.conf
+if the system is multi-homed,
+or if the system's DNS domain name does
+not match the name of the system's Kerberos realm.
+.Pp
+When the domain is not specified in /etc/idmapd.conf
+the local DNS server will be queried for the 
+.Sy _nfsv4idmapdomain 
+text record. If the record exists
+that will be used as the domain. When the record
+does not exist, the domain part of the DNS domain
+will used. 
+.Pp
 Note that on more recent kernels only the NFSv4 server uses
 .Nm .
 The NFSv4 client instead uses
@@ -50,11 +73,28 @@ The default value is \&"/var/lib/nfs/rpc_pipefs\&".
 .It Fl c Ar path
 Use configuration file
 .Ar path .
+This option is deprecated.
 .It Fl C
 Client-only: perform no idmapping for any NFS server, even if one is detected.
 .It Fl S
 Server-only: perform no idmapping for any NFS client, even if one is detected.
 .El
+.Sh CONFIGURATION FILES
+.Nm
+recognizes the following value from the
+.Sy [general]
+section of the
+.Pa /etc/nfs.conf
+configuration file:
+.Bl -tag -width Ds_imagedir
+.It Sy pipefs-directory
+Equivalent to
+.Sy -p .
+.El
+.Pp
+All other settings related to id mapping are found in the
+.Pa /etc/idmapd.conf
+configuration file.
 .Sh EXAMPLES
 .Cm rpc.idmapd -f -vvv
 .Pp
@@ -71,9 +111,11 @@ messages to console, and with a verbosity level of 3.
 .\" This next request is for sections 1, 6, 7 & 8 only.
 .\" .Sh ENVIRONMENT
 .Sh FILES
-.Pa /etc/idmapd.conf
+.Pa /etc/idmapd.conf ,
+.Pa /etc/nfs.conf
 .Sh SEE ALSO
 .Xr idmapd.conf 5 ,
+.Xr nfs.conf 5 ,
 .Xr nfsidmap 8
 .\".Sh SEE ALSO
 .\".Xr nylon.conf 4

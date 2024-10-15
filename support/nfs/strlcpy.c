@@ -38,6 +38,8 @@ static char *rcsid = "$OpenBSD: strlcpy.c,v 1.5 2001/05/13 15:40:16 deraadt Exp 
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 
+#include "nfslib.h"
+
 /*
  * Copy src to string dst of size siz.  At most siz-1 characters
  * will be copied.  Always NUL terminates (unless siz == 0).

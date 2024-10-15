@@ -54,6 +54,8 @@ int nfs_callback_address(const struct sockaddr *, const socklen_t,
 int clnt_ping(struct sockaddr_in *, const unsigned long,
 		const unsigned long, const unsigned int,
 		struct sockaddr_in *);
+int nfs_is_inaddr_any(struct sockaddr *);
+int nfs_addr_matches_localips(struct sockaddr *);
 
 struct mount_options;
 

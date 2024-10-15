@@ -18,7 +18,8 @@
 #define NFSEXP_ASYNC		0x0010
 #define NFSEXP_GATHERED_WRITES	0x0020
 #define NFSEXP_NOREADDIRPLUS	0x0040
-/* 80, 100 unused */
+#define NFSEXP_SECURITY_LABEL	0x0080
+/* 0x100 unused */
 #define NFSEXP_NOHIDE		0x0200
 #define NFSEXP_NOSUBTREECHECK	0x0400
 #define NFSEXP_NOAUTHNLM	0x0800
@@ -38,5 +39,19 @@
  */
 #define NFSEXP_OLD_SECINFO_FLAGS (NFSEXP_READONLY | NFSEXP_ROOTSQUASH \
 					| NFSEXP_ALLSQUASH)
+
+/*
+ * Transport layer security policies that are permitted to access
+ * an export
+ */
+#define NFSEXP_XPRTSEC_NONE	0x0001
+#define NFSEXP_XPRTSEC_TLS	0x0002
+#define NFSEXP_XPRTSEC_MTLS	0x0004
+
+#define NFSEXP_XPRTSEC_NUM	(3)
+
+#define NFSEXP_XPRTSEC_ALL	(NFSEXP_XPRTSEC_NONE | \
+				 NFSEXP_XPRTSEC_TLS | \
+				 NFSEXP_XPRTSEC_MTLS)
 
 #endif /* _NSF_EXPORT_H */
