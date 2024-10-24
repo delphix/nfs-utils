@@ -208,7 +208,7 @@ create_mtab (void) {
 	   that would create a file /proc/mounts in case the proc filesystem
 	   is not mounted, and the fchmod below would also fail. */
 	if (mtab_is_a_symlink()) {
-		return EX_SUCCESS;
+		return;
 	}
 
 	lock_mtab();
@@ -393,11 +393,6 @@ int main(int argc, char *argv[])
 	if(!strncmp(progname, "umount", strlen("umount")))
 		exit(nfsumount(argc, argv));
 
-	if ((argc < 3)) {
-		mount_usage();
-		exit(EX_USAGE);
-	}
-
 	mount_config_init(progname);
 
 	while ((c = getopt_long(argc, argv, "rvVwfno:hs",
@@ -435,6 +430,11 @@ int main(int argc, char *argv[])
 			mount_usage();
 			goto out_usage;
 		}
+	}
+
+	if ((argc < 3)) {
+		mount_usage();
+		exit(EX_USAGE);
 	}
 
 	/*

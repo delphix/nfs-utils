@@ -6,6 +6,16 @@ if CONFIG_RPCGEN
 OPTDIRS += rpcgen
 endif
 
-SUBDIRS = locktest rpcdebug nlmtest mountstats nfs-iostat $(OPTDIRS)
+OPTDIRS += nfsconf
+
+if CONFIG_NFSDCLD
+OPTDIRS += nfsdclddb
+endif
+
+if CONFIG_NFSRAHEAD
+OPTDIRS += nfsrahead
+endif
+
+SUBDIRS = locktest rpcdebug nlmtest mountstats nfs-iostat rpcctl nfsdclnts $(OPTDIRS)
 
 MAINTAINERCLEANFILES = Makefile.in

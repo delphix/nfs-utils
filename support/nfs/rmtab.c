@@ -10,7 +10,7 @@
 #include <config.h>
 #endif
 
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -33,12 +33,14 @@
 
 static FILE	*rmfp = NULL;
 
+struct state_paths rmtab;
+
 int
 setrmtabent(char *type)
 {
 	if (rmfp)
 		fclose(rmfp);
-	rmfp = fsetrmtabent(_PATH_RMTAB, type);
+	rmfp = fsetrmtabent(rmtab.statefn, type);
 	return (rmfp != NULL);
 }
 
@@ -152,27 +154,8 @@ endrmtabent(void)
 void
 fendrmtabent(FILE *fp)
 {
-	if (fp) {
-		static int have_new_cache = -1;
-		if (have_new_cache == -1) /* check only once */
-			have_new_cache = check_new_cache();
-
-		if (!have_new_cache) {
-			/*
-			 * If we are using the old caching interface: exportfs
-			 * uses the rmtab to determine what should be exported,
-			 * so it is important that it be up-to-date.
-			 *
-			 * If we are using the new caching interface: the rmtab
-			 * is ignored by exportfs and the fdatasync only serves
-			 * to slow us down.
-			 */
-			fflush(fp);
-			fdatasync(fileno(fp));
-		}
-
+	if (fp)
 		fclose(fp);
-	}
 }
 
 void

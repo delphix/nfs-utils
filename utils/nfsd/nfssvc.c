@@ -25,6 +25,7 @@
 #include "nfslib.h"
 #include "xlog.h"
 #include "nfssvc.h"
+#include "version.h"
 
 #ifndef NFSD_FS_DIR
 #define NFSD_FS_DIR	  "/proc/fs/nfsd"
@@ -45,8 +46,7 @@ char buf[128];
 /*
  * Using the "new" interfaces for nfsd requires that /proc/fs/nfsd is
  * actually mounted. Make an attempt to mount it here if it doesn't appear
- * to be. If the mount attempt fails, no big deal -- fall back to using nfsctl
- * instead.
+ * to be.
  */
 void
 nfssvc_mount_nfsdfs(char *progname)
@@ -69,7 +69,7 @@ nfssvc_mount_nfsdfs(char *progname)
 	 * mount nfsdfs when nfsd.ko is plugged in. So, ignore the return
 	 * code from it and just check for the "threads" file afterward.
 	 */
-	system("/bin/mount -t nfsd nfsd " NFSD_FS_DIR " >/dev/null 2>&1");
+	err = system("/bin/mount -t nfsd nfsd " NFSD_FS_DIR " >/dev/null 2>&1");
 
 	err = stat(NFSD_THREAD_FILE, &statbuf);
 	if (err == 0)
@@ -113,14 +113,13 @@ static int
 nfssvc_setfds(const struct addrinfo *hints, const char *node, const char *port)
 {
 	int fd, on = 1, fac = L_ERROR;
-	int sockfd = -1, rc = 0;
+	int sockfd = -1, rc = 0, bounded = 0;
 	struct addrinfo *addrhead = NULL, *addr;
 	char *proto, *family;
 
 	/*
-	 * if file can't be opened, then assume that it's not available and
-	 * that the caller should just fall back to the old nfsctl interface
- 	 */
+	 * if file can't be opened, fail.
+	 */
 	fd = open(NFSD_PORTS_FILE, O_WRONLY);
 	if (fd < 0)
 		return 0;
@@ -235,6 +234,8 @@ nfssvc_setfds(const struct addrinfo *hints, const char *node, const char *port)
 			rc = errno;
 			goto error;
 		}
+		bounded++;
+
 		close(fd);
 		close(sockfd);
 		sockfd = fd = -1;
@@ -245,9 +246,8 @@ error:
 		close(fd);
 	if (sockfd >= 0)
 		close(sockfd);
-	if (addrhead)
-		freeaddrinfo(addrhead);
-	return rc;
+	nfs_freeaddrinfo(addrhead);
+	return (bounded ? 0 : rc);
 }
 
 int
@@ -325,53 +325,97 @@ nfssvc_set_time(const char *type, const int seconds)
 		/* set same value for lockd */
 		fd = open("/proc/sys/fs/nfs/nlm_grace_period", O_WRONLY);
 		if (fd >= 0) {
-			write(fd, nbuf, strlen(nbuf));
+			if (write(fd, nbuf, strlen(nbuf)) != (ssize_t)strlen(nbuf))
+				xlog(L_ERROR, "Unable to write nlm_grace_period : %m");
 			close(fd);
 		}
 	}
 }
 
 void
-nfssvc_setvers(unsigned int ctlbits, unsigned int minorvers, unsigned int minorversset)
+nfssvc_get_minormask(unsigned int *mask)
+{
+	int fd;
+	char *ptr = buf;
+	ssize_t size;
+
+	fd = open(NFSD_VERS_FILE, O_RDONLY);
+	if (fd < 0)
+		return;
+
+	size = read(fd, buf, sizeof(buf));
+	if (size < 0) {
+		xlog(L_ERROR, "Getting versions failed: errno %d (%m)", errno);
+		goto out;
+	}
+	ptr[size] = '\0';
+	for (;;) {
+		unsigned vers, minor = 0;
+		char *token = strtok(ptr, " ");
+
+		if (!token)
+			break;
+		ptr = NULL;
+		if (*token != '+' && *token != '-')
+			continue;
+		if (sscanf(++token, "%u.%u", &vers, &minor) > 0 &&
+		    vers == 4 && minor <= NFS4_MAXMINOR)
+			NFSCTL_MINORSET(*mask, minor);
+	}
+out:
+	close(fd);
+	return;
+}
+
+static int
+nfssvc_print_vers(char *ptr, unsigned size, unsigned vers, unsigned minorvers,
+		int isset, int force4dot0)
+{
+	char sign = isset ? '+' : '-';
+	if (minorvers == 0)
+		if (linux_version_code() < MAKE_VERSION(4, 11, 0) || !force4dot0)
+			return snprintf(ptr, size, "%c%u ", sign, vers);
+	return snprintf(ptr, size, "%c%u.%u ", sign, vers, minorvers);
+}
+
+void
+nfssvc_setvers(unsigned int ctlbits, unsigned int minorvers, unsigned int minorversset,
+	       int force4dot0)
 {
 	int fd, n, off;
-	char *ptr;
 
-	ptr = buf;
 	off = 0;
 	fd = open(NFSD_VERS_FILE, O_WRONLY);
 	if (fd < 0)
 		return;
 
-	for (n = NFS4_MINMINOR; n <= NFS4_MAXMINOR; n++) {
-		if (NFSCTL_VERISSET(minorversset, n)) {
-			if (NFSCTL_VERISSET(minorvers, n))
-				off += snprintf(ptr+off, sizeof(buf) - off, "+4.%d ", n);
-			else
-				off += snprintf(ptr+off, sizeof(buf) - off, "-4.%d ", n);
-		}
+	for (n = NFSD_MINVERS; n <= ((NFSD_MAXVERS < 3) ? NFSD_MAXVERS : 3); n++)
+		off += nfssvc_print_vers(&buf[off], sizeof(buf) - off,
+				n, 0, NFSCTL_VERISSET(ctlbits, n), 0);
+
+	for (n = 0; n <= NFS4_MAXMINOR; n++) {
+		if (!NFSCTL_MINORISSET(minorversset, n))
+			continue;
+		off += nfssvc_print_vers(&buf[off], sizeof(buf) - off,
+				4, n, NFSCTL_MINORISSET(minorvers, n),
+				(n == 0) ? force4dot0 : 0);
 	}
-	for (n = NFSD_MINVERS; n <= NFSD_MAXVERS; n++) {
-		if (NFSCTL_VERISSET(ctlbits, n))
-		    off += snprintf(ptr+off, sizeof(buf) - off, "+%d ", n);
-		else
-		    off += snprintf(ptr+off, sizeof(buf) - off, "-%d ", n);
-	}
+	if (!off--)
+		goto out;
+	buf[off] = '\0';
 	xlog(D_GENERAL, "Writing version string to kernel: %s", buf);
-	snprintf(ptr+off, sizeof(buf) - off, "\n");
+	snprintf(&buf[off], sizeof(buf) - off, "\n");
 	if (write(fd, buf, strlen(buf)) != (ssize_t)strlen(buf))
 		xlog(L_ERROR, "Setting version failed: errno %d (%m)", errno);
-
+out:
 	close(fd);
 
 	return;
 }
 
 int
-nfssvc_threads(unsigned short port, const int nrservs)
+nfssvc_threads(const int nrservs)
 {
-	struct nfsctl_arg	arg;
-	struct servent *ent;
 	ssize_t n;
 	int fd;
 
@@ -390,17 +434,5 @@ nfssvc_threads(unsigned short port, const int nrservs)
 		else
 			return 0;
 	}
-
-	if (!port) {
-		ent = getservbyname("nfs", "udp");
-		if (ent != NULL)
-			port = ntohs(ent->s_port);
-		else
-			port = NFS_PORT;
-	}
-
-	arg.ca_version = NFSCTL_VERSION;
-	arg.ca_svc.svc_nthreads = nrservs;
-	arg.ca_svc.svc_port = port;
-	return nfsctl(NFSCTL_SVC, &arg, NULL);
+	return -1;
 }

@@ -218,7 +218,7 @@ int nfs4mount(const char *spec, const char *node, int flags,
 		goto fail;
 	}
 	if (running_bg)
-		strncpy(new_opts, old_opts, sizeof(new_opts));
+		strncpy(new_opts, old_opts, sizeof(new_opts)-1);
 	else
 		snprintf(new_opts, sizeof(new_opts), "%s%saddr=%s",
 			 old_opts, *old_opts ? "," : "", s);
@@ -444,6 +444,7 @@ int nfs4mount(const char *spec, const char *node, int flags,
 			case RPC_SYSTEMERROR:
 				if (errno == ETIMEDOUT)
 					break;
+				/* FALLTHRU */
 			default:
 				rpc_mount_errors(hostname, 0, bg);
 				goto fail;

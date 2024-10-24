@@ -1,19 +1,13 @@
-## Process this file with automake to produce Makefile.in
+CLEANFILES = *~
 
-CC=$(CC_FOR_BUILD)
-LIBTOOL = @LIBTOOL@ --tag=CC
+bin_PROGRAMS = rpcgen
+man_MANS = rpcgen.1
 
-noinst_PROGRAMS = rpcgen
+EXTRA_DIST=${MANS}
+
+noinst_HEADERS = proto.h rpc_parse.h rpc_scan.h rpc_util.h
+
 rpcgen_SOURCES = rpc_clntout.c rpc_cout.c rpc_hout.c rpc_main.c \
-	       	 rpc_parse.c rpc_scan.c rpc_svcout.c rpc_tblout.c \
-		 rpc_util.c rpc_sample.c rpc_output.h rpc_parse.h \
-		 rpc_scan.h rpc_util.h
-
-rpcgen_CFLAGS=$(CFLAGS_FOR_BUILD)
-rpcgen_CPPLAGS=$(CPPFLAGS_FOR_BUILD)
-rpcgen_LDFLAGS=$(LDFLAGS_FOR_BUILD)
-rpcgen_LDADD=$(LIBTIRPC)
-
-MAINTAINERCLEANFILES = Makefile.in
-
-EXTRA_DIST = rpcgen.new.1
+	rpc_parse.c rpc_sample.c rpc_scan.c rpc_svcout.c rpc_tblout.c \
+	rpc_util.c
+rpcgen_LDADD = $(LIBINTL)

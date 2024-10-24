@@ -9,6 +9,8 @@
 #include <dirent.h>
 #include <errno.h>
 
+#include "nfslib.h"
+
 void
 closeall(int min)
 {

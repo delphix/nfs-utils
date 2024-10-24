@@ -300,7 +300,7 @@ int versions[] = {
 	PRNT_V4
 };
 
-void usage(char *name)
+static void usage(char *name)
 {
 	printf("Usage: %s [OPTION]...\n\
 \n\
@@ -340,7 +340,7 @@ static struct option longopts[] =
 	{ "all", 0, 0, 'v' },
 	{ "auto", 0, 0, '\3' },
 	{ "client", 0, 0, 'c' },
-	{ "mounted", 0, 0, 'm' },
+	{ "mounts", 0, 0, 'm' },
 	{ "nfs", 0, 0, 'n' },
 	{ "rpc", 0, 0, 'r' },
 	{ "server", 0, 0, 's' },
@@ -389,7 +389,7 @@ main(int argc, char **argv)
 		switch (c) {
 		case 'a':
 			fprintf(stderr, "nfsstat: nfs acls are not yet supported.\n");
-			return -1;
+			return 1;
 		case 'c':
 			opt_clt = 1;
 			break;
@@ -455,7 +455,7 @@ main(int argc, char **argv)
 					"not yet supported\n");
 			return 2;
 		case 'm':
-			return mounts(MOUNTSFILE);
+			return ! mounts(MOUNTSFILE);
 		case '\1':
 			usage(progname);
 			return 0;
@@ -464,7 +464,7 @@ main(int argc, char **argv)
 			return 0;
 		default:
 			printf("Try `%s --help' for more information.\n", progname);
-			return -1;
+			return 1;
 		}
 	}
 
@@ -980,8 +980,10 @@ more_stats:
 			}
 			bufp = buf;
 			for (; curindex < numvals; curindex++) {
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
 				n = sscanf(bufp, fmt, &ip->valptr[curindex],
 						&numconsumed);
+#pragma GCC diagnostic warning "-Wformat-nonliteral"
 				if (n != 1)
 					break;
 				if (is_proc) {
@@ -1011,7 +1013,7 @@ mounts(const char *name)
 	 * be a fatal error -- it usually means the module isn't loaded.
 	 */
 	if ((fp = fopen(name, "r")) == NULL) {
-		fprintf(stderr, "Warning: %s: %m\n", name);
+		fprintf(stderr, "Warning: %s: %s\n", name, strerror(errno));
 		return 0;
 	}
 
@@ -1087,8 +1089,8 @@ out:
 		fclose(fp);
 	if (err) {
 		if (!other_opt) {
-			fprintf(stderr, "Error: No %s Stats (%s: %m). \n",
-					label, file);
+			fprintf(stderr, "Error: No %s Stats (%s: %s). \n",
+					label, file, strerror(errno));
 			exit(2);
 		}
 		*opt = 0;

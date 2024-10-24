@@ -125,16 +125,66 @@ In that case you may include multiple sec= options, and following options
 will be enforced only for access using flavors listed in the immediately
 preceding sec= option.  The only options that are permitted to vary in
 this way are ro, rw, no_root_squash, root_squash, and all_squash.
+.SS Transport layer security
+The Linux NFS server allows the use of RPC-with-TLS (RFC 9289) to
+protect RPC traffic between itself and its clients.
+Alternately, administrators can secure NFS traffic using a VPN,
+or an ssh tunnel or similar mechanism, in a way that is transparent
+to the server.
 .PP
+To enable the use of RPC-with-TLS, the server's administrator must
+install and configure
+.BR tlshd
+to handle transport layer security handshake requests from the local
+kernel.
+Clients can then choose to use RPC-with-TLS or they may continue
+operating without it.
+.PP
+Administrators may require the use of RPC-with-TLS to protect access
+to individual exports.
+This is particularly useful when using non-cryptographic security
+flavors such as
+.IR sec=sys .
+The
+.I xprtsec=
+option, followed by an unordered colon-delimited list of security policies,
+can restrict access to the export to only clients that have negotiated
+transport-layer security.
+Currently supported transport layer security policies include:
+.TP
+.IR none
+The server permits clients to access the export
+without the use of transport layer security.
+.TP
+.IR tls
+The server permits clients that have negotiated an RPC-with-TLS session
+without peer authentication (confidentiality only) to access the export.
+Clients are not required to offer an x.509 certificate
+when establishing a transport layer security session.
+.TP
+.IR mtls
+The server permits clients that have negotiated an RPC-with-TLS session
+with peer authentication to access the export.
+The server requires clients to offer an x.509 certificate
+when establishing a transport layer security session.
+.PP
+If RPC-with-TLS is configured and enabled and the
+.I xprtsec=
+option is not specified, the default setting for an export is
+.IR xprtsec=none:tls:mtls .
+With this setting, the server permits clients to use any transport
+layer security mechanism or none at all to access the export.
 .SS General Options
 .BR exportfs
 understands the following export options:
 .TP
 .IR secure
-This option requires that requests originate on an Internet port less
-than IPPORT_RESERVED (1024). This option is on by default. To turn it
-off, specify
+This option requires that requests not using gss originate on an
+Internet port less than IPPORT_RESERVED (1024). This option is on by default.
+To turn it off, specify
 .IR insecure .
+(NOTE: older kernels (before upstream kernel version 4.17) enforced this
+requirement on gss requests as well.)
 .TP
 .IR rw
 Allow both read and write requests on this NFS volume. The
@@ -167,13 +217,6 @@ default.  In all releases after 1.0.0,
 is the default, and
 .I async
 must be explicitly requested if needed.
-To help make system administrators aware of this change,
-.B exportfs
-will issue a warning if neither
-.I sync
-nor
-.I async
-is specified.
 .TP
 .IR no_wdelay
 This option has no effect if
@@ -410,12 +453,51 @@ of the filesystem must be handled elsewhere.)
 
 .TP
 .IR pnfs
-This option allows enables the use of pNFS extension if protocol level
+This option enables the use of the pNFS extension if the protocol level
 is NFSv4.1 or higher, and the filesystem supports pNFS exports.  With
 pNFS clients can bypass the server and perform I/O directly to storage
 devices. The default can be explicitly requested with the
 .I no_pnfs
 option.
+
+.TP
+.IR security_label
+With this option set, clients using NFSv4.2 or higher will be able to
+set and retrieve security labels (such as those used by SELinux).  This
+will only work if all clients use a consistent security policy.  Note
+that early kernels did not support this export option, and instead
+enabled security labels by default.
+
+.TP
+.IR reexport= auto-fsidnum|predefined-fsidnum
+This option helps when a NFS share is re-exported. Since the NFS server
+needs a unique identifier for each exported filesystem and a NFS share
+cannot provide such, usually a manual fsid is needed.
+As soon
+.IR crossmnt
+is used manually assigning fsid won't work anymore. This is where this
+option becomes handy. It will automatically assign a numerical fsid
+to exported NFS shares. The fsid and path relations are stored in a SQLite
+database. If
+.IR auto-fsidnum
+is selected, the fsid is also autmatically allocated.
+.IR predefined-fsidnum
+assumes pre-allocated fsid numbers and will just look them up.
+This option depends also on the kernel, you will need at least kernel version
+5.19.
+Since
+.IR reexport=
+can automatically allocate and assign numerical fsids, it is no longer possible
+to have numerical fsids in other exports as soon this option is used in at least
+one export entry.
+
+The association between fsid numbers and paths is stored in a SQLite database.
+Don't edit or remove the database unless you know exactly what you're doing.
+.IR predefined-fsidnum
+is useful when you have used
+.IR auto-fsidnum
+before and don't want further entries stored.
+
 
 .SS User ID Mapping
 .PP
@@ -484,6 +566,33 @@ export entry for
 .B /home/joe
 in the example section below, which maps all requests to uid 150 (which
 is supposedly that of user joe).
+
+.SS Subdirectory Exports
+
+Normally you should only export only the root of a filesystem.  The NFS
+server will also allow you to export a subdirectory of a filesystem,
+however, this has drawbacks:
+
+First, it may be possible for a malicious user to access files on the
+filesystem outside of the exported subdirectory, by guessing filehandles
+for those other files.  The only way to prevent this is by using the
+.IR no_subtree_check
+option, which can cause other problems.
+
+Second, export options may not be enforced in the way that you would
+expect.  For example, the
+.IR security_label
+option will not work on subdirectory exports, and if nested subdirectory
+exports change the
+.IR security_label
+or
+.IR sec=
+options, NFSv4 clients will normally see only the options on the parent
+export.  Also, where security options differ, a malicious client may use
+filehandle-guessing attacks to access the files from one subdirectory
+using the options from another.
+
+
 .SS Extra Export Tables
 After reading 
 .I /etc/exports 
@@ -551,7 +660,8 @@ a character class wildcard match.
 .BR netgroup (5),
 .BR mountd (8),
 .BR nfsd (8),
-.BR showmount (8).
+.BR showmount (8),
+.BR tlshd (8).
 .\".SH DIAGNOSTICS
 .\"An error parsing the file is reported using syslogd(8) as level NOTICE from
 .\"a DAEMON whenever

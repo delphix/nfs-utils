@@ -3,6 +3,8 @@
 """Emulate iostat for NFS mount points using /proc/self/mountstats
 """
 
+from __future__ import print_function
+
 __copyright__ = """
 Copyright (C) 2005, Chuck Lever <cel@netapp.com>
 
@@ -41,7 +43,7 @@ NfsEventCounters = [
     'vfspermission',
     'vfsupdatepage',
     'vfsreadpage',
-    'vfsreadpages',
+    'vfsreadpages', # or vfsreadahead in statvers=1.2 or above
     'vfswritepage',
     'vfswritepages',
     'vfsreaddir',
@@ -84,14 +86,14 @@ class DeviceData:
             self.__nfs_data['export'] = words[1]
             self.__nfs_data['mountpoint'] = words[4]
             self.__nfs_data['fstype'] = words[7]
-            if words[7] == 'nfs':
-                self.__nfs_data['statvers'] = words[8]
+            if words[7] == 'nfs' or words[7] == 'nfs4':
+                self.__nfs_data['statvers'] = float(words[8].split('=',1)[1])
         elif 'nfs' in words or 'nfs4' in words:
             self.__nfs_data['export'] = words[0]
             self.__nfs_data['mountpoint'] = words[3]
             self.__nfs_data['fstype'] = words[6]
             if words[6] == 'nfs':
-                self.__nfs_data['statvers'] = words[7]
+                self.__nfs_data['statvers'] = float(words[7].split('=',1)[1])
         elif words[0] == 'age:':
             self.__nfs_data['age'] = int(words[1])
         elif words[0] == 'opts:':
@@ -201,9 +203,9 @@ class DeviceData:
         result = DeviceData()
 
         # copy self into result
-        for key, value in list(self.__nfs_data.items()):
+        for key, value in self.__nfs_data.items():
             result.__nfs_data[key] = value
-        for key, value in list(self.__rpc_data.items()):
+        for key, value in self.__rpc_data.items():
             result.__rpc_data[key] = value
 
         # compute the difference of each item in the list
@@ -211,8 +213,11 @@ class DeviceData:
         # the reference to them.  so we build new lists here
         # for the result object.
         for op in result.__rpc_data['ops']:
-            result.__rpc_data[op] = list(map(
-                difference, self.__rpc_data[op], old_stats.__rpc_data[op]))
+            try:
+                result.__rpc_data[op] = list(map(
+                    difference, self.__rpc_data[op], old_stats.__rpc_data[op]))
+            except KeyError:
+                continue
 
         # update the remaining keys we care about
         result.__rpc_data['rpcsends'] -= old_stats.__rpc_data['rpcsends']
@@ -289,8 +294,11 @@ class DeviceData:
         print()
         print('%d nfs_readpage() calls read %d pages' % \
             (vfsreadpage, vfsreadpage))
-        print('%d nfs_readpages() calls read %d pages' % \
-            (vfsreadpages, pages_read - vfsreadpage))
+        multipageread = "readpages"
+        if self.__nfs_data['statvers'] >= 1.2:
+            multipageread = "readahead"
+        print('%d nfs_%s() calls read %d pages' % \
+            (vfsreadpages, multipageread, pages_read - vfsreadpage))
         if vfsreadpages != 0:
             print('(%.1f pages per call)' % \
                 (float(pages_read - vfsreadpage) / vfsreadpages))
@@ -324,8 +332,11 @@ class DeviceData:
         ops = float(rpc_stats[0])
         retrans = float(rpc_stats[1] - rpc_stats[0])
         kilobytes = float(rpc_stats[3] + rpc_stats[4]) / 1024
+        queued_for = float(rpc_stats[5])
         rtt = float(rpc_stats[6])
         exe = float(rpc_stats[7])
+        if len(rpc_stats) >= 9:
+            errs = float(rpc_stats[8])
 
         # prevent floating point exceptions
         if ops != 0:
@@ -333,11 +344,17 @@ class DeviceData:
             retrans_percent = (retrans * 100) / ops
             rtt_per_op = rtt / ops
             exe_per_op = exe / ops
+            queued_for_per_op = queued_for / ops
+            if len(rpc_stats) >= 9:
+                errs_percent = (errs * 100) / ops
         else:
             kb_per_op = 0.0
             retrans_percent = 0.0
             rtt_per_op = 0.0
             exe_per_op = 0.0
+            queued_for_per_op = 0.0
+            if len(rpc_stats) >= 9:
+                errs_percent = 0.0
 
         op += ':'
         print(format(op.lower(), '<16s'), end='')
@@ -346,7 +363,11 @@ class DeviceData:
         print(format('kB/op', '>16s'), end='')
         print(format('retrans', '>16s'), end='')
         print(format('avg RTT (ms)', '>16s'), end='')
-        print(format('avg exe (ms)', '>16s'))
+        print(format('avg exe (ms)', '>16s'), end='')
+        print(format('avg queue (ms)', '>16s'), end='')
+        if len(rpc_stats) >= 9:
+            print(format('errors', '>16s'), end='')
+        print()
 
         print(format((ops / sample_time), '>24.3f'), end='')
         print(format((kilobytes / sample_time), '>16.3f'), end='')
@@ -354,12 +375,19 @@ class DeviceData:
         retransmits = '{0:>10.0f} ({1:>3.1f}%)'.format(retrans, retrans_percent).strip()
         print(format(retransmits, '>16'), end='')
         print(format(rtt_per_op, '>16.3f'), end='')
-        print(format(exe_per_op, '>16.3f'))
+        print(format(exe_per_op, '>16.3f'), end='')
+        print(format(queued_for_per_op, '>16.3f'), end='')
+        if len(rpc_stats) >= 9:
+            errors = '{0:>10.0f} ({1:>3.1f}%)'.format(errs, errs_percent).strip()
+            print(format(errors, '>16'), end='')
+        print()
 
     def ops(self, sample_time):
         sends = float(self.__rpc_data['rpcsends'])
         if sample_time == 0:
             sample_time = float(self.__nfs_data['age'])
+        if sample_time == 0:
+            sample_time = 1;
         return (sends / sample_time)
 
     def display_iostats(self, sample_time, which):
@@ -427,6 +455,8 @@ def parse_stats_file(filename):
         words = line.split()
         if len(words) == 0:
             continue
+        if line.startswith("no device mounted"):
+            continue
         if words[0] == 'device':
             key = words[4]
             new = [ line.strip() ]
@@ -443,10 +473,13 @@ def parse_stats_file(filename):
 def print_iostat_summary(old, new, devices, time, options):
     stats = {}
     diff_stats = {}
+    devicelist = []
     if old:
         # Trim device list to only include intersection of old and new data,
         # this addresses umounts due to autofs mountpoints
-        devicelist = [x for x in old if x in devices]
+        for device in devices:
+            if "fstype autofs" not in str(old[device]):
+                devicelist.append(device)
     else:
         devicelist = devices
 
@@ -492,7 +525,7 @@ def list_nfs_mounts(givenlist, mountstats):
             if stats.is_nfs_mountpoint():
                 devicelist += [device]
     else:
-        for device, descr in list(mountstats.items()):
+        for device, descr in mountstats.items():
             stats = DeviceData()
             stats.parse_stats(descr)
             if stats.is_nfs_mountpoint():

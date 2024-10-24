@@ -53,7 +53,7 @@
 #define DEF_ALLOC_LEN	255
 #define MX_ALLOC_LEN	(0xc000 + 0x80)
 
-static struct bl_serial *bl_create_scsi_string(int len, const char *bytes)
+struct bl_serial *bl_create_scsi_string(int len, const char *bytes)
 {
 	struct bl_serial *s;
 
@@ -66,7 +66,7 @@ static struct bl_serial *bl_create_scsi_string(int len, const char *bytes)
 	return s;
 }
 
-static void bl_free_scsi_string(struct bl_serial *str)
+void bl_free_scsi_string(struct bl_serial *str)
 {
 	if (str)
 		free(str);
@@ -216,6 +216,7 @@ struct bl_serial *bldev_read_serial(int fd, const char *filename)
 			if ((dev_id->len != 8) && (dev_id->len != 12) &&
 			    (dev_id->len != 16))
 				break;
+			/* FALLTHRU */
 		case 3:	/* NAA */
 			/* TODO: NAA validity judgement too complicated,
 			 * so just ingore it here.
@@ -224,6 +225,7 @@ struct bl_serial *bldev_read_serial(int fd, const char *filename)
 				BL_LOG_ERR("Binary code_set expected\n");
 				break;
 			}
+			/* FALLTHRU */
 		case 0:	/* vendor specific */
 		case 1:	/* T10 vendor identification */
 			current_id = dev_id->ids & 0xf;

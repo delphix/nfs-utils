@@ -15,7 +15,12 @@
  *
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <nfslib.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdio_ext.h>
 #include <string.h>
@@ -35,7 +40,7 @@ void qword_add(char **bpp, int *lp, char *str)
 
 	if (len < 0) return;
 
-	while ((c=*str++) && len)
+	while ((c=*str++) && len > 0)
 		switch(c) {
 		case ' ':
 		case '\t':
@@ -198,31 +203,18 @@ int qword_get_uint(char **bpp, unsigned int *anint)
 	return 0;
 }
 
-/* Check if we should use the new caching interface
- * This succeeds iff the "nfsd" filesystem is mounted on
- * /proc/fs/nfs
- */
-int
-check_new_cache(void)
-{
-	return	(access("/proc/fs/nfs/filehandle", F_OK) == 0) ||
-		(access("/proc/fs/nfsd/filehandle", F_OK) == 0);
-}	
-
-
 /* flush the kNFSd caches.
- * Set the flush time to the mtime of _PATH_ETAB or
+ * Set the flush time to the mtime of the etab state file or
  * if force, to now.
  * the caches to flush are:
  *  auth.unix.ip nfsd.export nfsd.fh
  */
 
 void
-cache_flush(int force)
+cache_flush(void)
 {
-	struct stat stb;
 	int c;
-	char stime[20];
+	char stime[32];
 	char path[200];
 	time_t now;
 	/* Note: the order of these caches is important.
@@ -239,12 +231,13 @@ cache_flush(int force)
 		NULL
 	};
 	now = time(0);
-	if (force ||
-	    stat(_PATH_ETAB, &stb) != 0 ||
-	    stb.st_mtime > now)
-		stb.st_mtime = time(0);
-	
-	sprintf(stime, "%ld\n", stb.st_mtime);
+
+	/* Since v4.16-rc2-3-g3b68e6ee3cbd the timestamp written is ignored.
+	 * It is safest always to flush caches if there is any doubt.
+	 * For earlier kernels, writing the next second from now is
+	 * the best we can do.
+	 */
+	sprintf(stime, "%" PRId64 "\n", (int64_t)now+1);
 	for (c=0; cachelist[c]; c++) {
 		int fd;
 		sprintf(path, "/proc/net/rpc/%s/flush", cachelist[c]);

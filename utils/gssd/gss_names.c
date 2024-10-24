@@ -51,6 +51,7 @@
 
 #include "svcgssd.h"
 #include "gss_util.h"
+#include "gss_names.h"
 #include "err_util.h"
 #include "context.h"
 #include "misc.h"
@@ -109,10 +110,12 @@ get_hostbased_client_name(gss_name_t client_name, gss_OID mech,
 	/* For Kerberos, transform the NT_KRB5_PRINCIPAL name to
 	 * an NT_HOSTBASED_SERVICE name */
 	if (g_OID_equal(&krb5oid, mech)) {
-		if (get_krb5_hostbased_name(&name, &cname) == 0)
-			*hostbased_name = cname;
+		if (get_krb5_hostbased_name(&name, &cname) != 0)
+			goto out_rel_buf;
+		*hostbased_name = cname;
 	} else {
 		printerr(1, "WARNING: unknown/unsupport mech OID\n");
+		goto out_rel_buf;
 	}
 
 	res = 0;

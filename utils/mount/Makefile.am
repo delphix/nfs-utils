@@ -1,8 +1,10 @@
 ## Process this file with automake to produce Makefile.in
 
-# These binaries go in /sbin (not /usr/sbin), and that cannot be
-# overridden at config time.
-sbindir = /sbin
+# These binaries go in /sbin (not /usr/sbin), unless CONFIG_SBIN_OVERRIDE
+# is disabled as may be appropriate when /sbin is a symlink.
+# Note that we don't use "if CONFIG_SBIN_OVERRIDE" as that
+# causes autotools to notice the override and disable it.
+@CONFIG_SBIN_OVERRIDE_TRUE@sbindir = /sbin
 
 man8_MANS	= mount.nfs.man umount.nfs.man
 man5_MANS	= nfs.man
@@ -25,9 +27,11 @@ else
 EXTRA_DIST += nfsmount.conf.man
 endif
 
-mount_nfs_LDADD = ../../support/nfs/libnfs.a \
+mount_nfs_LDADD = ../../support/nfs/libnfs.la \
 		  ../../support/export/libexport.a \
-		  $(LIBTIRPC)
+		  ../../support/reexport/libreexport.a \
+		  ../../support/misc/libmisc.a \
+		   $(LIBTIRPC) $(LIBPTHREAD)
 
 mount_nfs_SOURCES = $(mount_common)
 

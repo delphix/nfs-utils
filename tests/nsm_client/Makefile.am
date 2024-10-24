@@ -7,13 +7,15 @@ GENFILES_H	= nlm_sm_inter.h
 
 GENFILES	= $(GENFILES_CLNT) $(GENFILES_SVC) $(GENFILES_XDR) $(GENFILES_H)
 
+AM_CFLAGS += -Wno-missing-prototypes -Wno-missing-declarations
+
 EXTRA_DIST = nlm_sm_inter.x
 
 check_PROGRAMS	= nsm_client
 nsm_client_SOURCES = $(GENFILES) nsm_client.c
 
 BUILT_SOURCES = $(GENFILES)
-nsm_client_LDADD = ../../support/nfs/libnfs.a \
+nsm_client_LDADD = ../../support/nfs/.libs/libnfs.a \
 		   ../../support/nsm/libnsm.a $(LIBCAP) $(LIBTIRPC)
 
 if CONFIG_RPCGEN

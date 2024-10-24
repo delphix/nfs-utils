@@ -1,0 +1,16 @@
+nfs-utils (1:2.6.1-1) unstable; urgency=medium
+
+  On systems running systemd, changes to command-line options in
+  /etc/default/nfs-common or /etc/default/nfs-kernel-server will now
+  be ignored.  All those options can instead be set in /etc/nfs.conf
+  or /etc/nfs.conf.d/; see nfs.conf(5).
+
+  If either of the files in /etc/default has been changed, the
+  command-line options will be converted on upgrade to the file
+  /etc/nfs.conf.d/local.conf.
+
+  A future update to nfs-utils will remove the command-line options
+  in /etc/default entirely, so even on systems not using systemd
+  you should make changes in /etc/nfs.conf.d/ instead.
+
+ -- Ben Hutchings <benh@debian.org>  Sun, 13 Mar 2022 19:55:09 +0100

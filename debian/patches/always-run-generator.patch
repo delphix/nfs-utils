@@ -1,0 +1,23 @@
+Description: Always run the generator
+ Run the generator even if the pipefs-directory setting is the default one.
+Author: Andreas Hasenack <andreas@canonical.com>
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1971935
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1014429
+Forwarded: https://lore.kernel.org/linux-nfs/EE39279C-4E40-48C8-ABC9-707EB1AD6D79@redhat.com/
+Last-Update: 2022-07-12
+---
+This patch header follows DEP-3: http://dep.debian.net/deps/dep3/
+diff --git a/systemd/rpc-pipefs-generator.c b/systemd/rpc-pipefs-generator.c
+index c24db567..7c42431f 100644
+--- a/systemd/rpc-pipefs-generator.c
++++ b/systemd/rpc-pipefs-generator.c
+@@ -139,9 +139,6 @@ int main(int argc, char *argv[])
+ 	s = conf_get_str("general", "pipefs-directory");
+ 	if (!s)
+ 		exit(0);
+-	if (strlen(s) == strlen(RPC_PIPEFS_DEFAULT) &&
+-			strcmp(s, RPC_PIPEFS_DEFAULT) == 0)
+-		exit(0);
+ 
+ 	if (is_non_pipefs_mountpoint(s))
+ 		exit(1);

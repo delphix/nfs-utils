@@ -9,10 +9,11 @@
  */
 
 #include <stdio.h>
-#include <string.h>		/* for index */
+#include <string.h>		/* for strchr */
 #include <ctype.h>		/* for isdigit */
 #include <sys/stat.h>		/* for umask */
 #include <unistd.h>		/* for ftruncate */
+#include <errno.h>		/* for errno */
 
 #include "nfs_mntent.h"
 #include "nls.h"
@@ -148,9 +149,12 @@ nfs_addmntent (mntFILE *mfp, struct mntent *mnt) {
 	free(m4);
 	if (res >= 0) {
 		res = fflush(mfp->mntent_fp);
-		if (res < 0)
+		if (res < 0) {
+			nfs_error("Cant't flush out mtab: %s", strerror(errno));
 			/* Avoid leaving a corrupt mtab file */
-			ftruncate(fileno(mfp->mntent_fp), length);
+			if (ftruncate(fileno(mfp->mntent_fp), length))
+				{/* Ignore this failure; Why confuse things */}
+		}
 	}
 	return (res < 0) ? 1 : 0;
 }
@@ -172,7 +176,7 @@ nfs_getmntent (mntFILE *mfp) {
 			return NULL;
 
 		mfp->mntent_lineno++;
-		s = index (buf, '\n');
+		s = strchr (buf, '\n');
 		if (s == NULL) {
 			/* Missing final newline?  Otherwise extremely */
 			/* long line - assume file was corrupted */
@@ -180,7 +184,7 @@ nfs_getmntent (mntFILE *mfp) {
 				fprintf(stderr, _("[mntent]: warning: no final "
 					"newline at the end of %s\n"),
 					mfp->mntent_file);
-				s = index (buf, 0);
+				s = strchr (buf, 0);
 			} else {
 				mfp->mntent_errs = 1;
 				goto err;

@@ -53,9 +53,11 @@
 
 #include <errno.h>
 #include <time.h>
+#include <inttypes.h>
 #include "statd.h"
 #include "notlist.h"
 
+void my_svc_exit(void);
 static int	svc_stop = 0;
 
 /*
@@ -103,8 +105,8 @@ my_svc_run(int sockfd)
 
 			tv.tv_sec  = NL_WHEN(notify) - now;
 			tv.tv_usec = 0;
-			xlog(D_GENERAL, "Waiting for reply... (timeo %d)",
-							tv.tv_sec);
+			xlog(D_GENERAL, "Waiting for reply... (timeo %jd)",
+							(intmax_t)tv.tv_sec);
 			selret = select(FD_SETSIZE, &readfds,
 				(void *) 0, (void *) 0, &tv);
 		} else {

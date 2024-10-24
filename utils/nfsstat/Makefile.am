@@ -6,7 +6,7 @@ EXTRA_DIST	= $(man8_MANS)
 sbin_PROGRAMS	= nfsstat
 nfsstat_SOURCES = nfsstat.c
 nfsstat_LDADD = ../../support/export/libexport.a \
-	      	../../support/nfs/libnfs.a \
+	      	../../support/nfs/libnfs.la \
 		../../support/misc/libmisc.a
 
 MAINTAINERCLEANFILES = Makefile.in

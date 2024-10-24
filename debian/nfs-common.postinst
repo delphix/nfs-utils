@@ -7,47 +7,17 @@ case "$1" in
     configure)
         ucf --three-way /usr/share/nfs-common/conffiles/idmapd.conf /etc/idmapd.conf
         ucf --three-way /usr/share/nfs-common/conffiles/nfs-common.default /etc/default/nfs-common
-
-        if [ "$2" != "" ] && dpkg --compare-versions "$2" lt 1:1.1.0-10; then
-            update-rc.d -f nfs-common remove >/dev/null
-        fi
+        ucf --three-way /usr/share/nfs-common/conffiles/nfs.conf /etc/nfs.conf
 
         if ! getent passwd statd >/dev/null; then
             adduser --system --home /var/lib/nfs --no-create-home statd
         fi
-        if dpkg --compare-versions "$2" ge 1:1.0.7-10 && dpkg --compare-versions "$2" lt 1:1.0.7-13; then
-            usermod --home /var/lib/nfs statd || true
-            if [ -d /home/statd ]; then
-                rmdir --ignore-fail-on-non-empty /home/statd
-            fi
-        fi
 
-        # Don't make /var/lib/nfs owned by statd. Only sm and sm.bak need to be
-        # accessible by statd or sm-notify after they drop privileges.
-        # (CVE-2019-3689)
-        if dpkg --compare-versions "$2" lt 1:1.3.4-2.5ubuntu3.3; then
-                chown root:root /var/lib/nfs
-        fi
         chown statd: /var/lib/nfs/sm \
             /var/lib/nfs/sm.bak
         if [ -f /var/lib/nfs/state ]; then
             chown statd /var/lib/nfs/state
         fi
-        
-        if [ "$2" != "" ] || dpkg --compare-versions "$2" lt 1:1.1.0-14; then
-            if dpkg-statoverride --list /sbin/mount.nfs >/dev/null 2>&1; then
-                dpkg-statoverride --remove /sbin/mount.nfs
-            fi
-        fi
-
-	# Migrate /lib/init/rw/sendsigs.omit.statd to /run.
-	if [ -f /lib/init/rw/sendsigs.omit.d/statd ]; then 
-	    mv /lib/init/rw/sendsigs.omit.d/statd /run/sendsigs.omit.d/statd
-	fi
-
-        # always "start" nfs-utils.service, so package upgrades will restart it,
-        # see LP: #1928259
-        systemctl start nfs-utils.service > /dev/null || true
     ;;
 esac
 

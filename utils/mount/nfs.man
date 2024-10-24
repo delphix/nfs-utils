@@ -11,11 +11,8 @@ NFS is an Internet Standard protocol
 created by Sun Microsystems in 1984. NFS was developed
 to allow file sharing between systems residing
 on a local area network.
-The Linux NFS client supports three versions
-of the NFS protocol:
-NFS version 2 [RFC1094],
-NFS version 3 [RFC1813],
-and NFS version 4 [RFC3530].
+Depending on kernel configuration, the Linux NFS client may
+support NFS versions 3, 4.0, 4.1, or 4.2.
 .P
 The
 .BR mount (8)
@@ -88,9 +85,8 @@ These options are valid to use with any NFS version.
 The NFS protocol version number used to contact the server's NFS service.
 If the server does not support the requested version, the mount request 
 fails.
-If this option is not specified, the client negotiates a suitable version 
-with
-the server, trying version 4 first, version 3 second, and version 2 last.
+If this option is not specified, the client tries version 4.2 first,
+then negotiates down until it finds a version supported by the server.
 .TP 1.5i
 .BI vers= n
 This option is an alternative to the
@@ -98,32 +94,69 @@ This option is an alternative to the
 option.
 It is included for compatibility with other operating systems
 .TP 1.5i
-.BR soft " / " hard
+.BR soft " / " softerr " / " hard
 Determines the recovery behavior of the NFS client
 after an NFS request times out.
-If neither option is specified (or if the
+If no option is specified (or if the
 .B hard
 option is specified), NFS requests are retried indefinitely.
-If the
-.B soft
+If either the
+.BR soft " or " softerr
 option is specified, then the NFS client fails an NFS request
 after
 .B retrans
 retransmissions have been sent,
-causing the NFS client to return an error
-to the calling application.
+causing the NFS client to return either the error
+.B EIO
+(for the
+.B soft
+option) or
+.B ETIMEDOUT
+(for the
+.B softerr
+option) to the calling application.
 .IP
 .I NB:
 A so-called "soft" timeout can cause
 silent data corruption in certain cases. As such, use the
-.B soft
+.BR soft " or " softerr
 option only when client responsiveness
 is more important than data integrity.
 Using NFS over TCP or increasing the value of the
 .B retrans
 option may mitigate some of the risks of using the
-.B soft
+.BR soft " or " softerr
 option.
+.TP 1.5i
+.BR softreval " / " nosoftreval
+In cases where the NFS server is down, it may be useful to
+allow the NFS client to continue to serve up paths and
+attributes from cache after
+.B retrans
+attempts to revalidate that cache have timed out.
+This may, for instance, be helpful when trying to unmount a
+filesystem tree from a server that is permanently down.
+.IP
+It is possible to combine
+.BR softreval
+with the
+.B soft
+mount option, in which case operations that cannot be served up
+from cache will time out and return an error after
+.B retrans
+attempts. The combination with the default
+.B hard
+mount option implies those uncached operations will continue to
+retry until a response is received from the server.
+.IP
+Note: the default mount option is
+.BR nosoftreval
+which disallows fallback to cache when revalidation fails, and
+instead follows the behavior dictated by the
+.B hard
+or
+.B soft
+mount option.
 .TP 1.5i
 .BR intr " / " nointr
 This option is provided for backward compatibility.
@@ -373,6 +406,23 @@ using an automounter (refer to
 .BR automount (8)
 for details).
 .TP 1.5i
+.BR nconnect= n
+When using a connection oriented protocol such as TCP, it may
+sometimes be advantageous to set up multiple connections between
+the client and server. For instance, if your clients and/or servers
+are equipped with multiple network interface cards (NICs), using multiple
+connections to spread the load may improve overall performance.
+In such cases, the
+.BR nconnect
+option allows the user to specify the number of connections
+that should be established between the client and server up to
+a limit of 16.
+.IP
+Note that the
+.BR nconnect
+option may also be used by some pNFS drivers to decide how many
+connections to set up to the data servers.
+.TP 1.5i
 .BR rdirplus " / " nordirplus
 Selects whether to use NFS v3 or v4 READDIRPLUS requests.
 If this option is not specified, the NFS client uses READDIRPLUS requests
@@ -509,7 +559,7 @@ detailed discussion of these trade-offs.
 .BR fsc " / " nofsc
 Enable/Disables the cache of (read-only) data pages to the local disk 
 using the FS-Cache facility. See cachefilesd(8) 
-and <kernel_soruce>/Documentation/filesystems/caching
+and <kernel_source>/Documentation/filesystems/caching
 for detail on how to configure the FS-Cache facility.
 Default value is nofsc.
 .TP 1.5i
@@ -518,7 +568,46 @@ The
 .B sloppy
 option is an alternative to specifying
 .BR mount.nfs " -s " option.
-
+.TP 1.5i
+.BI xprtsec= policy
+Specifies the use of transport layer security to protect NFS network
+traffic on behalf of this mount point.
+.I policy
+can be one of
+.BR none ,
+.BR tls ,
+or
+.BR mtls .
+.IP
+If
+.B none
+is specified,
+transport layer security is forced off, even if the NFS server supports
+transport layer security.
+.IP
+If
+.B tls
+is specified, the client uses RPC-with-TLS to provide in-transit
+confidentiality.
+.IP
+If
+.B mtls
+is specified, the client uses RPC-with-TLS to authenticate itself and
+to provide in-transit confidentiality.
+.IP
+If either
+.B tls
+or
+.B mtls
+is specified and the server does not support RPC-with-TLS or peer
+authentication fails, the mount attempt fails.
+.IP
+If the
+.B xprtsec=
+option is not specified,
+the default behavior depends on the kernel version,
+but is usually equivalent to
+.BR "xprtsec=none" .
 .SS "Options for NFS versions 2 and 3 only"
 Use these options, along with the options in the above subsection,
 for NFS versions 2 and 3 only.
@@ -528,7 +617,7 @@ The
 .I netid
 determines the transport that is used to communicate with the NFS
 server.  Available options are
-.BR udp ", " udp6 ", "tcp ", " tcp6 ", and " rdma .
+.BR udp ", " udp6 ", "tcp ", " tcp6 ", " rdma ", and " rdma6 .
 Those which end in
 .B 6
 use IPv6 addresses and are only available if support for TI-RPC is
@@ -769,14 +858,14 @@ NOTE: When used together, the 'local_lock' mount option will be overridden
 by 'nolock'/'lock' mount option.
 .SS "Options for NFS version 4 only"
 Use these options, along with the options in the first subsection above,
-for NFS version 4 and newer.
+for NFS version 4.0 and newer.
 .TP 1.5i
 .BI proto= netid
 The
 .I netid
 determines the transport that is used to communicate with the NFS
 server.  Supported options are
-.BR tcp ", " tcp6 ", and " rdma .
+.BR tcp ", " tcp6 ", " rdma ", and " rdma6 .
 .B tcp6
 use IPv6 addresses and is only available if support for TI-RPC is
 built in. Both others use IPv4 addresses.
@@ -785,6 +874,23 @@ All NFS version 4 servers are required to support TCP,
 so if this mount option is not specified, the NFS version 4 client
 uses the TCP protocol.
 Refer to the TRANSPORT METHODS section for more details.
+.TP 1.5i
+.BI minorversion= n
+Specifies the protocol minor version number.
+NFSv4 introduces "minor versioning," where NFS protocol enhancements can
+be introduced without bumping the NFS protocol version number.
+Before kernel 2.6.38, the minor version is always zero, and this
+option is not recognized.
+After this kernel, specifying "minorversion=1" enables a number of
+advanced features, such as NFSv4 sessions.
+.IP
+Recent kernels allow the minor version to be specified using the
+.B vers=
+option.
+For example, specifying
+.B vers=4.1
+is the same as specifying
+.BR vers=4,minorversion=1 .
 .TP 1.5i
 .BI port= n
 The numeric value of the server's NFS service port.
@@ -825,10 +931,13 @@ the behavior of this option in more detail.
 Specifies a single IPv4 address (in dotted-quad form),
 or a non-link-local IPv6 address,
 that the NFS client advertises to allow servers
-to perform NFS version 4 callback requests against
+to perform NFS version 4.0 callback requests against
 files on this mount point. If  the  server is unable to
 establish callback connections to clients, performance
 may degrade, or accesses to files may temporarily hang.
+Can specify a value of IPv4_ANY (0.0.0.0) or equivalent
+IPv6 any address which will signal to the NFS server that
+this NFS client does not want delegations.
 .IP
 If this option is not specified, the
 .BR mount (8)
@@ -838,6 +947,11 @@ In the presence of multiple client network interfaces,
 special routing policies,
 or atypical network topologies,
 the exact address to use for callbacks may be nontrivial to determine.
+.IP
+NFS protocol versions 4.1 and 4.2 use the client-established
+TCP connection for callback requests, so do not require the server to
+connect to the client.  This option is therefore only affect NFS version
+4.0 mounts.
 .TP 1.5i
 .BR migration " / " nomigration
 Selects whether the client uses an identification string that is compatible
@@ -858,6 +972,32 @@ when it identifies itself via a traditional identification string.
 .IP
 This mount option has no effect with NFSv4 minor versions newer than zero,
 which always use TSM-compatible client identification strings.
+.TP 1.5i
+.BR max_connect= n
+While
+.BR nconnect
+option sets a limit on the number of connections that can be established
+to a given server IP,
+.BR max_connect
+option allows the user to specify maximum number of connections to different
+server IPs that belong to the same NFSv4.1+ server (session trunkable
+connections) up to a limit of 16. When client discovers that it established
+a client ID to an already existing server, instead of dropping the newly
+created network transport, the client will add this new connection to the
+list of available transports for that RPC client.
+.TP 1.5i
+.BR trunkdiscovery " / " notrunkdiscovery
+When the client discovers a new filesystem on a NFSv4.1+ server, the
+.BR trunkdiscovery
+mount option will cause it to send a GETATTR for the fs_locations attribute.
+If is receives a non-zero length reply, it will iterate through the response,
+and for each server location it will establish a connection, send an
+EXCHANGE_ID, and test for session trunking.  If the trunking test succeeds,
+the connection will be added to the existing set of transports for the server,
+subject to the limit specified by the
+.BR max_connect
+option.  The default is
+.BR notrunkdiscovery .
 .SH nfs4 FILE SYSTEM TYPE
 The
 .BR nfs4
@@ -873,12 +1013,6 @@ file. See
 .BR nfsmount.conf(5)
 for details.
 .SH EXAMPLES
-To mount an export using NFS version 2,
-use the
-.B nfs
-file system type and specify the
-.B nfsvers=2
-mount option.
 To mount using NFS version 3,
 use the
 .B nfs
@@ -902,13 +1036,6 @@ reasonable defaults for NFS behavior.
 .nf
 .ta 8n +16n +6n +6n +30n
 	server:/export	/mnt	nfs	defaults	0 0
-.fi
-.P
-Here is an example from an /etc/fstab file for an NFS version 2 mount over UDP.
-.P
-.nf
-.ta 8n +16n +6n +6n +30n
-	server:/export	/mnt	nfs	nfsvers=2,proto=udp	0 0
 .fi
 .P
 This example shows how to mount using NFS version 4 over TCP
@@ -1003,7 +1130,7 @@ and
 can safely be allowed to default to the largest values supported by
 both client and server, independent of the network's MTU size.
 .SS "Using the mountproto mount option"
-This section applies only to NFS version 2 and version 3 mounts
+This section applies only to NFS version 3 mounts
 since NFS version 4 does not use a separate protocol for mount
 requests.
 .P
@@ -1238,7 +1365,7 @@ If absolute cache coherence among clients is required,
 applications should use file locking. Alternatively, applications
 can also open their files with the O_DIRECT flag
 to disable data caching entirely.
-.SS "File timestamp maintainence"
+.SS "File timestamp maintenance"
 NFS servers are responsible for managing file and directory timestamps
 .RB ( atime ,
 .BR ctime ", and"
@@ -1406,7 +1533,7 @@ the use of the
 mount option.
 .SS "Using file locks with NFS"
 The Network Lock Manager protocol is a separate sideband protocol
-used to manage file locks in NFS version 2 and version 3.
+used to manage file locks in NFS version 3.
 To support lock recovery after a client or server reboot,
 a second sideband protocol --
 known as the Network Status Manager protocol --
@@ -1578,52 +1705,55 @@ from a server's pseudo-fs
 into one of the server's exported physical filesystems,
 which often have more restrictive security settings than the pseudo-fs.
 .SS "NFS version 4 Leases"
-In NFS version 4, a lease is a period of time during which a server
-irrevocably grants a file lock to a client.
-If the lease expires, the server is allowed to revoke that lock.
+In NFS version 4, a lease is a period during which a server
+irrevocably grants a client file locks.
+Once the lease expires, the server may revoke those locks.
 Clients periodically renew their leases to prevent lock revocation.
 .P
 After an NFS version 4 server reboots, each client tells the
-server about all file open and lock state under its lease
+server about existing file open and lock state under its lease
 before operation can continue.
-If the client reboots, the server frees all open and lock state
+If a client reboots, the server frees all open and lock state
 associated with that client's lease.
 .P
-As part of establishing a lease, therefore,
+When establishing a lease, therefore,
 a client must identify itself to a server.
-A fixed string is used to distinguish that client from
-others, and a changeable verifier is used to indicate
-when the client has rebooted.
+Each client presents an arbitrary string
+to distinguish itself from other clients.
+The client administrator can
+supplement the default identity string using the
+.I nfs4.nfs4_unique_id
+module parameter to avoid collisions
+with other client identity strings.
 .P
-A client uses a particular security flavor and principal
-when performing the operations to establish a lease.
-If two clients happen to present the same identity string,
-a server can use their principals to detect that they are
-different clients, and prevent one client from interfering
-with the other's lease.
+A client also uses a unique security flavor and principal
+when it establishes its lease.
+If two clients present the same identity string,
+a server can use client principals to distinguish between them,
+thus securely preventing one client from interfering with the other's lease.
 .P
-The Linux NFS client establishes one lease for each server.
+The Linux NFS client establishes one lease on each NFS version 4 server.
 Lease management operations, such as lease renewal, are not
 done on behalf of a particular file, lock, user, or mount
-point, but on behalf of the whole client that owns that lease.
-These operations must use the same security flavor and
-principal that was used when the lease was established,
-even across client reboots.
+point, but on behalf of the client that owns that lease.
+A client uses a consistent identity string, security flavor,
+and principal across client reboots to ensure that the server
+can promptly reap expired lease state.
 .P
 When Kerberos is configured on a Linux NFS client
 (i.e., there is a
 .I /etc/krb5.keytab
 on that client), the client attempts to use a Kerberos
 security flavor for its lease management operations.
-This provides strong authentication of the client to
-each server it contacts.
+Kerberos provides secure authentication of each client.
 By default, the client uses the
 .I host/
 or
 .I nfs/
 service principal in its
 .I /etc/krb5.keytab
-for this purpose.
+for this purpose, as described in
+.BR rpc.gssd (8).
 .P
 If the client has Kerberos configured, but the server
 does not, or if the client does not have a keytab or
@@ -1779,7 +1909,7 @@ file system table
 .TP 1.5i
 .I /etc/nfsmount.conf
 Configuration file for NFS mounts
-.SH BUGS
+.SH NOTES
 Before 2.4.7, the Linux NFS client did not support NFS over TCP.
 .P
 Before 2.4.20, the Linux NFS client used a heuristic
@@ -1798,9 +1928,9 @@ when the
 .BR rsize " and " wsize
 settings were smaller than the system's page size.
 .P
-The Linux NFS client does not yet support
-certain optional features of the NFS version 4 protocol,
-such as security negotiation, server referrals, and named attributes.
+The Linux client's support for protocol versions depend on whether the
+kernel was built with options CONFIG_NFS_V2, CONFIG_NFS_V3,
+CONFIG_NFS_V4, CONFIG_NFS_V4_1, and CONFIG_NFS_V4_2.
 .SH "SEE ALSO"
 .BR fstab (5),
 .BR mount (8),
@@ -1823,8 +1953,6 @@ RFC 768 for the UDP specification.
 .br
 RFC 793 for the TCP specification.
 .br
-RFC 1094 for the NFS version 2 specification.
-.br
 RFC 1813 for the NFS version 3 specification.
 .br
 RFC 1832 for the XDR specification.
@@ -1833,4 +1961,8 @@ RFC 1833 for the RPC bind specification.
 .br
 RFC 2203 for the RPCSEC GSS API protocol specification.
 .br
-RFC 3530 for the NFS version 4 specification.
+RFC 7530 for the NFS version 4.0 specification.
+.br
+RFC 5661 for the NFS version 4.1 specification.
+.br
+RFC 7862 for the NFS version 4.2 specification.

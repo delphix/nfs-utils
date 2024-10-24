@@ -7,6 +7,10 @@
  * - Moved code to nfs-utils/support/nfs from util-linux/mount.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <errno.h>
 #include <stdio.h>
 #include <fcntl.h>

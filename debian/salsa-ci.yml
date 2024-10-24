@@ -1,0 +1,24 @@
+include:
+  - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/salsa-ci.yml
+  - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/pipeline-jobs.yml
+
+variables:
+  RELEASE: 'unstable'
+  # We only build arch:any packages
+  SALSA_CI_DISABLE_BUILD_PACKAGE_ALL: 'true'
+  # Currently triggering falsely (bugs #973313, #1000977)
+  SALSA_CI_LINTIAN_SUPPRESS_TAGS: 'groff-message,elf-error'
+
+shellcheck:
+  stage: test
+  image: $SALSA_CI_IMAGES_BASE
+  except:
+    variables:
+      - $CI_COMMIT_TAG != null
+  script:
+    - apt-get update
+    - apt-get install -y quilt shellcheck
+    - QUILT_PATCHES=debian/patches quilt push -a
+    - |
+        shellcheck -e SC1090,SC1091 utils/statd/start-statd $(find debian -maxdepth 1 -type f | xargs grep -El '^#!/bin/(ba|da)?sh')
+  needs: []

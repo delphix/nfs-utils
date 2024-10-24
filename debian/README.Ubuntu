@@ -1,0 +1,30 @@
+# New configuration file
+
+nfs-common and nfs-kernel-server use a common configuration file /etc/nfs.conf.
+They also support a /etc/nfs.conf.d/*.conf structure.
+
+If there are local modifications to either /etc/default/nfs-common or
+/etc/default/nfs-kernel-server as installed by previous versions of the
+corresponding Debian packages, nfs-common will attempt a migration to the new
+configuration file. This migration is done by calling the
+/usr/share/nfs-common/nfsconvert.py script in postinst.
+
+Upon success, the script will produce /etc/nfs.conf.d/local.conf with the local
+customizations specified in those older config files, while /etc/nfs.conf will
+remain with the default settings.
+
+If the migration fails for some reason, the package installation will fail and
+manual intervention will be required. This will probably involve temporarily
+removing the offending configuration option that was not handled by the
+migration script and configuring the package again. Please consult nfs.conf(5)
+and each daemon's manpage to determine how to translate the command line
+options previously defined in /etc/default/nfs-* to the new configuration file
+format.
+
+# Services
+
+All NFS related services are enabled by default. This means that depending on
+the NFS version that you intend to use, some services might be superfluous.
+For example, if you never intend to serve NFSv3, then you can safely disable
+the rpc-statd.service unit. Note that some NFSv4 service units will start only
+if Kerberos is setup.

@@ -1,4 +1,4 @@
 usr/share/man/man8/mountd.8 usr/share/man/man8/rpc.mountd.8
 usr/share/man/man8/nfsd.8 usr/share/man/man8/rpc.nfsd.8
 # provide match for SysV init script
-/lib/systemd/system/nfs-server.service /lib/systemd/system/nfs-kernel-server.service
+/usr/lib/systemd/system/nfs-server.service /usr/lib/systemd/system/nfs-kernel-server.service

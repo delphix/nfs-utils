@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <time.h>
 #include "nfslib.h"
+#include "rpcmisc.h"
 
 #if SIZEOF_SOCKLEN_T - 0 == 0
 #define socklen_t int
@@ -101,6 +102,7 @@ makesock(int port, int proto)
 	if (bind(sock, (struct sockaddr *) &sin, sizeof(sin)) == -1) {
 		xlog(L_FATAL, "Could not bind name to socket: %s",
 					strerror(errno));
+		close(sock);
 		return -1;
 	}
 

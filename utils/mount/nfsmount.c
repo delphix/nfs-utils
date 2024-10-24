@@ -452,6 +452,7 @@ parse_options(char *old_opts, struct nfs_mount_data *data,
 	nfs_error(_("%s: Bad nfs mount parameter: %s\n"), progname, opt);
  out_bad:
 	free(tmp_opts);
+	free(mounthost);
 	return 0;
 }
 
@@ -683,6 +684,7 @@ nfsmount(const char *spec, const char *node, int flags,
 			case RPC_SYSTEMERROR:
 				if (errno == ETIMEDOUT)
 					break;
+				/* FALLTHRU */
 			default:
 				rpc_mount_errors(*nfs_server.hostname, 0, bg);
 		        goto fail;
@@ -827,7 +829,7 @@ noauth_flavors:
 
 	data.fd = fsock;
 	memcpy((char *) &data.addr, (char *) nfs_saddr, sizeof(data.addr));
-	strncpy(data.hostname, hostname, sizeof(data.hostname));
+	strncpy(data.hostname, hostname, sizeof(data.hostname)-1);
 
  out_ok:
 	/* Ensure we have enough padding for the following strcat()s */

@@ -32,11 +32,12 @@ $(GENFILES_SVC): %_svc.c: %.x $(RPCGEN)
 
 $(GENFILES_XDR): %_xdr.c: %.x $(RPCGEN)
 	test -f $@ && rm -rf $@ || true
-	$(RPCGEN) -c -o $@ $<
+	$(RPCGEN) -c -i 0 -o $@ $<
 
 $(GENFILES_H): %.h: %.x $(RPCGEN)
 	test -f $@ && rm -rf $@ || true
 	$(RPCGEN) -h -o $@ $<
+	echo "void sm_prog_1(struct svc_req *, SVCXPRT *);" >> $@
 	rm -f $(top_builddir)/support/include/sm_inter.h
 	$(LN_S) ../nsm/sm_inter.h $(top_builddir)/support/include/sm_inter.h
 

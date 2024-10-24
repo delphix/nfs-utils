@@ -36,6 +36,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "xlog.h"
+#include "err_util.h"
 
 static int verbosity = 0;
 static int fg = 0;
@@ -69,3 +70,17 @@ int get_verbosity(void)
 {
 	return verbosity;
 }
+
+char * 
+sec2time(int value)
+{
+    static char buf[BUFSIZ];
+    int hr, min, sec;
+
+    hr = (value / 3600);
+    min = (value  - (3600*hr))/60;
+    sec = (value  - (3600*hr) - (min*60));
+    sprintf(buf, "%dh:%dm:%ds", hr, min, sec);
+    return(buf);
+}
+
