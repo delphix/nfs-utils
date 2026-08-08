@@ -275,7 +275,7 @@ section is
 .SH SECURITY
 The
 .B sm-notify
-command must be started as root to acquire privileges needed
+command is, generally, started as root to acquire privileges needed
 to access the state information database.
 It drops root privileges
 as soon as it starts up to reduce the risk of a privilege escalation attack.
@@ -290,6 +290,14 @@ chooses, simply use
 .BR chown (1)
 to set the owner of
 the state directory.
+.PP
+The
+.B sm-notify
+command can also be started by the user ID that owns the state directory.
+That is useful for the situation when it is called from an rpc-stat
+ha-callout program that is already running as the
+non-privileged user.  The non-root user will not have the capabilities
+to drop the root privileges as described above.
 .SH ADDITIONAL NOTES
 Lock recovery after a reboot is critical to maintaining data integrity
 and preventing unnecessary application hangs.

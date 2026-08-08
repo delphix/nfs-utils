@@ -5,7 +5,10 @@ set -e
 . debian/tests/util
 
 cleanup() {
-    umount /mnt || :
+    set +e
+    umount /mnt
+    exportfs -uav
+    sed -i '/^\/storage/d' /etc/exports
 }
 
 trap cleanup EXIT

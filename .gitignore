@@ -57,6 +57,7 @@ utils/rquotad/rquota_xdr.c
 utils/showmount/showmount
 utils/nfsdcld/nfsdcld
 utils/nfsdcltrack/nfsdcltrack
+utils/nfsdctl/nfsdctl
 utils/statd/statd
 tools/locktest/testlk
 tools/getiversion/getiversion
@@ -79,6 +80,7 @@ tests/nsm_client/nlm_sm_inter_svc.c
 tests/nsm_client/nlm_sm_inter_xdr.c
 utils/nfsidmap/nfsidmap
 utils/nfsref/nfsref
+systemd/nfsroot-generator
 systemd/nfs-server-generator
 systemd/rpc-pipefs-generator
 systemd/nfs-config.service

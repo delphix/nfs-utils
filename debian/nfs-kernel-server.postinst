@@ -9,9 +9,15 @@ case "$1" in
 	ucf --three-way /usr/share/nfs-kernel-server/conffiles/etc.exports /etc/exports
 	ucf --three-way /usr/share/nfs-kernel-server/conffiles/nfs-kernel-server.default /etc/default/nfs-kernel-server
 
+	# Create state files if missing, using backups created during
+	# preinst if present
 	for f in /var/lib/nfs/etab  \
 		 /var/lib/nfs/rmtab; do
-	    [ -e $f ] || touch $f
+	    if [ -f "$f.bak" ]; then
+		mv -n "$f.bak" "$f" || rm -f "$f.bak"
+	    else
+		[ -e "$f" ] || touch "$f"
+	    fi
 	done
 
 	update-rc.d nfs-kernel-server defaults 20 80 >/dev/null

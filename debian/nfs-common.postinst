@@ -14,9 +14,15 @@ case "$1" in
 
         chown statd: /var/lib/nfs/sm \
             /var/lib/nfs/sm.bak
-        if [ -f /var/lib/nfs/state ]; then
-            chown statd /var/lib/nfs/state
-        fi
+
+	# Create state file if missing, using backup created during
+	# preinst if present
+	if [ -f /var/lib/nfs/state.bak ]; then
+	    mv -n /var/lib/nfs/state.bak /var/lib/nfs/state || rm -f /var/lib/nfs/state.bak
+	else
+	    [ -e /var/lib/nfs/state ] || touch /var/lib/nfs/state
+	fi
+	chown statd /var/lib/nfs/state
     ;;
 esac
 

@@ -9,7 +9,7 @@ nfsiostat \- Emulate iostat for NFS mount points using /proc/self/mountstats
 .SH DESCRIPTION
 The
 .B nfsiostat
-command displays NFS client per-mount statisitics. 
+command displays NFS client per-mount statistics. 
 .TP 
 <interval>
 specifies the amount of time in seconds between each report.
@@ -106,7 +106,7 @@ This is the number of operations that completed with an error status (status < 0
 .RE
 .RE
 .TP
-Note that if an interval is used as argument to \fBnfsiostat\fR, then the diffrence from previous interval will be displayed, otherwise the results will be from the time that the share was mounted.
+Note that if an interval is used as argument to \fBnfsiostat\fR, then the difference from previous interval will be displayed, otherwise the results will be from the time that the share was mounted.
 
 .SH OPTIONS
 .TP

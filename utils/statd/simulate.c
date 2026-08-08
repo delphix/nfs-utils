@@ -219,7 +219,7 @@ sim_sm_mon_1_svc (struct status *argp, struct svc_req *rqstp)
 {
   static char *result;
 
-  xlog (D_GENERAL, "Recieved state %d for mon_name %s (opaque \"%s\")",
+  xlog (D_GENERAL, "Received state %d for mon_name %s (opaque \"%s\")",
 	   argp->state, argp->mon_name, argp->priv);
   svc_exit ();
   return ((void *)&result);

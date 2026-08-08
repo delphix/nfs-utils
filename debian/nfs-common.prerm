@@ -4,9 +4,12 @@ set -e
 
 #DEBHELPER#
 
-if [ "$1" = remove ]
-then
-    rm -f /var/lib/nfs/sm/*      \
-          /var/lib/nfs/sm.bak/*  \
-          /var/lib/nfs/state
-fi
+case "$1" in
+    upgrade|failed-upgrade)
+        ;;
+    *)
+	rm -f /var/lib/nfs/sm/*      \
+	      /var/lib/nfs/sm.bak/*  \
+	      /var/lib/nfs/state
+	;;
+esac

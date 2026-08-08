@@ -1,2 +1,0 @@
-nfs-kernel-server: file-missing-in-md5sums var/lib/nfs/rmtab [md5sums]
-nfs-kernel-server: file-missing-in-md5sums var/lib/nfs/etab [md5sums]

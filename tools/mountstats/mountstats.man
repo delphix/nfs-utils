@@ -47,7 +47,7 @@ mountstats \- Displays various NFS client per-mount statistics
 .RI [ mountpoint ] ...
 .P
 .SH DESCRIPTION
-.RB "The " mountstats " command displays various NFS client statisitics for each given"
+.RB "The " mountstats " command displays various NFS client statistics for each given"
 .IR mountpoint .
 .P
 .RI "If no " mountpoint " is given, statistics will be displayed for all NFS mountpoints on the client."

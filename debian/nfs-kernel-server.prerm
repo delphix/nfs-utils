@@ -11,10 +11,13 @@ case "$1" in
 	;;
 esac
 
-if [ "$1" != upgrade ]
-then
-    rm -f /var/lib/nfs/etab   \
-          /var/lib/nfs/rmtab
-fi
+case "$1" in
+    upgrade|failed-upgrade)
+        ;;
+    *)
+	rm -f /var/lib/nfs/etab   \
+	      /var/lib/nfs/rmtab
+	;;
+esac
 
 exit 0
