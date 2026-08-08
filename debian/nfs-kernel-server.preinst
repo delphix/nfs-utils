@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = upgrade ] && dpkg --compare-versions "$2" lt 1:2.6.4-6~; then
+    # These files are local state but were wrongly shipped as empty
+    # files in older versions.  On upgrade from an older version dpkg
+    # will remove them.  Create protective links so we can at least
+    # restore them in postinst.
+    for f in /var/lib/nfs/etab  \
+	     /var/lib/nfs/rmtab; do
+	if [ -f "$f" ]; then
+	    ln "$f" "$f.bak"
+	fi
+    done
+fi
+
+#DEBHELPER#

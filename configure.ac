@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 dnl
-AC_INIT([linux nfs-utils],[2.6.4],[linux-nfs@vger.kernel.org],[nfs-utils])
+AC_INIT([linux nfs-utils],[2.8.5],[linux-nfs@vger.kernel.org],[nfs-utils])
 AC_CANONICAL_BUILD([])
 AC_CANONICAL_HOST([])
 AC_CONFIG_MACRO_DIR(aclocal)
@@ -85,22 +85,22 @@ AC_ARG_ENABLE(nfsv4,
 	AC_SUBST(enable_nfsv4)
 	AM_CONDITIONAL(CONFIG_NFSV4, [test "$enable_nfsv4" = "yes"])
 
-AC_ARG_ENABLE(nfsv41,
-	[AS_HELP_STRING([--disable-nfsv41],[disable support for NFSv41 @<:@default=no@:>@])],
-	enable_nfsv41=$enableval,
-	enable_nfsv41=yes)
-	if test "$enable_nfsv41" = yes; then
+AC_ARG_ENABLE(blkmapd,
+	[AS_HELP_STRING([--enable-blkmapd],[enable support for blkmapd @<:@default=no@:>@])],
+	enable_blkmapd=$enableval,
+	enable_blkmapd=no)
+	if test "$enable_blkmapd" = yes; then
 		if test "$enable_nfsv4" != yes; then
-			AC_MSG_WARN([NFS v4 is not enabled. Disabling NFS v4.1])
-			enable_nfsv41=no
+			AC_MSG_WARN([NFS v4 is not enabled. Disabling blkmapd.])
+			enable_blkmapd=no
 		fi
 		BLKMAPD=blkmapd
 	else
-		enable_nfsv41=
+		enable_blkmapd=
 		BLKMAPD=
 	fi
-	AC_SUBST(enable_nfsv41)
-	AM_CONDITIONAL(CONFIG_NFSV41, [test "$enable_nfsv41" = "yes"])
+	AC_SUBST(enable_blkmapd)
+	AM_CONDITIONAL(CONFIG_BLKMAPD, [test "$enable_blkmapd" = "yes"])
 
 AC_ARG_ENABLE(gss,
 	[AS_HELP_STRING([--disable-gss],[disable client support for rpcsec_gss @<:@default=no@:>@])],
@@ -175,14 +175,14 @@ else
 fi
 
 AC_ARG_ENABLE(sbin-override,
-	[AS_HELP_STRING([--disable-sbin-override],[Don't force nfsdcltrack and mount helpers into /sbin: always honour --sbindir])],
+	[AS_HELP_STRING([--disable-sbin-override],[Do not force nfsdcltrack and mount helpers into /sbin: always honour --sbindir])],
 	enable_sbin_override=$enableval,
 	enable_sbin_override=yes)
 	AM_CONDITIONAL(CONFIG_SBIN_OVERRIDE, [test "$enable_sbin_override" = "yes"])
 AC_ARG_ENABLE(junction,
-	[AS_HELP_STRING([--enable-junction],[enable support for NFS junctions @<:@default=no@:>@])],
+	[AS_HELP_STRING([--enable-junction],[enable support for NFS junctions @<:@default=yes@:>@])],
 	enable_junction=$enableval,
-	enable_junction=no)
+	enable_junction=yes)
 	if test "$enable_junction" = yes; then
 		AC_DEFINE(HAVE_JUNCTION_SUPPORT, 1,
                           [Define this if you want junction support compiled in])
@@ -248,9 +248,33 @@ AC_ARG_ENABLE(nfsrahead,
 	fi
 
 AC_ARG_ENABLE(nfsdcltrack,
-	[AS_HELP_STRING([--disable-nfsdcltrack],[disable NFSv4 clientid tracking programs @<:@default=no@:>@])],
+	[AS_HELP_STRING([--enable-nfsdcltrack],[enable NFSv4 clientid tracking programs @<:@default=no@:>@])],
 	enable_nfsdcltrack=$enableval,
-	enable_nfsdcltrack="yes")
+	enable_nfsdcltrack="no")
+
+AC_ARG_ENABLE(nfsdctl,
+	[AS_HELP_STRING([--disable-nfsdctl],[disable nfsdctl program for controlling nfsd@<:@default=no@:>@])],
+	enable_nfsdctl=$enableval,
+	enable_nfsdctl="yes")
+	AM_CONDITIONAL(CONFIG_NFSDCTL, [test "$enable_nfsdctl" = "yes" ])
+	if test "$enable_nfsdctl" = yes; then
+		PKG_CHECK_MODULES(LIBNL3, libnl-3.0 >= 3.1)
+		PKG_CHECK_MODULES(LIBNLGENL3, libnl-genl-3.0 >= 3.1)
+		PKG_CHECK_MODULES(LIBREADLINE, readline)
+		AC_CHECK_HEADERS(linux/nfsd_netlink.h)
+		AC_CHECK_DECLS([NFSD_A_SERVER_MIN_THREADS], , ,
+			       [#include <linux/nfsd_netlink.h>])
+
+		# ensure we have the pool-mode commands
+		AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <linux/nfsd_netlink.h>]],
+				                   [[int foo = NFSD_CMD_POOL_MODE_GET;]])],
+				   [AC_DEFINE([USE_SYSTEM_NFSD_NETLINK_H], 1,
+					      ["Use system's linux/nfsd_netlink.h"])])
+		AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <linux/lockd_netlink.h>]],
+				                   [[int foo = LOCKD_CMD_SERVER_GET;]])],
+				   [AC_DEFINE([USE_SYSTEM_LOCKD_NETLINK_H], 1,
+					      ["Use system's linux/lockd_netlink.h"])])
+	fi
 
 AC_ARG_ENABLE(nfsv4server,
 	[AS_HELP_STRING([--enable-nfsv4server],[enable support for NFSv4 only server  @<:@default=no@:>@])],
@@ -376,7 +400,7 @@ else
   enable_nfsdcltrack="no"
 fi
 
-if test "$enable_nfsv41" = yes; then
+if test "$enable_blkmapd" = yes; then
   AC_CHECK_LIB([devmapper], [dm_task_create], [LIBDEVMAPPER="-ldevmapper"], AC_MSG_ERROR([libdevmapper needed]))
   AC_CHECK_HEADER(libdevmapper.h, , AC_MSG_ERROR([Cannot find devmapper header file libdevmapper.h]))
   AC_CHECK_HEADER(sys/inotify.h, , AC_MSG_ERROR([Cannot find header file sys/inotify.h]))
@@ -556,7 +580,7 @@ AC_FUNC_ERROR_AT_LINE
 AC_FUNC_FORK
 AC_FUNC_GETGROUPS
 AC_FUNC_GETMNTENT
-AC_PROG_GCC_TRADITIONAL
+AC_PROG_CC
 AC_FUNC_LSTAT
 AC_FUNC_LSTAT_FOLLOWS_SLASHED_SYMLINK
 AC_HEADER_MAJOR
@@ -597,7 +621,6 @@ AC_CHECK_SIZEOF(socklen_t,, [AC_INCLUDES_DEFAULT
                              #ifdef HAVE_SYS_SOCKET_H
                              # include <sys/socket.h>
                              #endif])
-
 
 dnl *************************************************************
 dnl Export some path names to config.h
@@ -739,6 +762,7 @@ AC_CONFIG_FILES([
 	utils/mountd/Makefile
 	utils/exportd/Makefile
 	utils/nfsd/Makefile
+	utils/nfsdctl/Makefile
 	utils/nfsref/Makefile
 	utils/nfsstat/Makefile
 	utils/nfsidmap/Makefile

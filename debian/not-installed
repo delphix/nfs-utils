@@ -1,3 +1,6 @@
+debian/tmp/var/lib/nfs/etab
+debian/tmp/var/lib/nfs/rmtab
+debian/tmp/var/lib/nfs/state
 usr/lib/*/libnfsidmap/*.a
 usr/lib/*/libnfsidmap/*.la
 usr/lib/*/libnfsidmap.la

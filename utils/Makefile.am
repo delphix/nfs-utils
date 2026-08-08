@@ -11,7 +11,7 @@ if CONFIG_NFSV4SERVER
 OPTDIRS += exportd
 endif
 
-if CONFIG_NFSV41
+if CONFIG_BLKMAPD
 OPTDIRS += blkmapd
 endif
 
@@ -33,6 +33,10 @@ endif
 
 if CONFIG_JUNCTION
 OPTDIRS += nfsref
+endif
+
+if CONFIG_NFSDCTL
+OPTDIRS += nfsdctl
 endif
 
 SUBDIRS = \

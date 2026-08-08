@@ -91,7 +91,7 @@ static int nss_uid_to_name(uid_t uid, char *domain, char *name, size_t len)
 	struct passwd *pw = NULL;
 	struct passwd pwbuf;
 	char *buf;
-	size_t buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+	size_t buflen = get_pwnam_buflen();
 	int err = -ENOMEM;
 
 	buf = malloc(buflen);
@@ -119,7 +119,7 @@ static int nss_gid_to_name(gid_t gid, char *domain, char *name, size_t len)
 	struct group *gr = NULL;
 	struct group grbuf;
 	char *buf;
-	size_t buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+	size_t buflen = get_grnam_buflen();
 	int err;
 
 	if (domain == NULL)
@@ -192,7 +192,7 @@ static struct passwd *nss_getpwnam(const char *name, const char *domain,
 {
 	struct passwd *pw;
 	struct pwbuf *buf;
-	size_t buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+	size_t buflen = get_pwnam_buflen();
 	char *localname;
 	int err = ENOMEM;
 
@@ -301,7 +301,7 @@ static int _nss_name_to_gid(char *name, gid_t *gid, int dostrip)
 	struct group *gr = NULL;
 	struct group grbuf;
 	char *buf, *domain;
-	size_t buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+	size_t buflen = get_grnam_buflen();
 	int err = -EINVAL;
 	char *localname = NULL;
 	char *ref_name = NULL;

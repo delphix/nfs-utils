@@ -5,7 +5,7 @@ Last-Update: 2022-06-27
 
 --- a/systemd/nfs.conf.man
 +++ b/systemd/nfs.conf.man
-@@ -283,7 +283,10 @@
+@@ -280,7 +280,10 @@
  .TP
  .B svcgssd
  Recognized values:
