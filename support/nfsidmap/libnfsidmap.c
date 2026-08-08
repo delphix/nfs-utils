@@ -457,7 +457,7 @@ int nfs4_init_name_mapping(char *conffile)
 
 	nobody_user = conf_get_str("Mapping", "Nobody-User");
 	if (nobody_user) {
-		size_t buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+		size_t buflen = get_pwnam_buflen();
 		struct passwd *buf;
 		struct passwd *pw = NULL;
 		int err;
@@ -478,7 +478,7 @@ int nfs4_init_name_mapping(char *conffile)
 
 	nobody_group = conf_get_str("Mapping", "Nobody-Group");
 	if (nobody_group) {
-		size_t buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+		size_t buflen = get_grnam_buflen();
 		struct group *buf;
 		struct group *gr = NULL;
 		int err;

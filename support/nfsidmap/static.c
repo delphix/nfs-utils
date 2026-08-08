@@ -44,6 +44,7 @@
 #include "conffile.h"
 #include "nfsidmap.h"
 #include "nfsidmap_plugin.h"
+#include "nfsidmap_private.h"
 
 /*
  * Static Translation Methods
@@ -98,7 +99,7 @@ static struct passwd *static_getpwnam(const char *name,
 {
 	struct passwd *pw;
 	struct pwbuf *buf;
-	size_t buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+	size_t buflen = get_pwnam_buflen();
 	char *localname;
 	int err;
 
@@ -149,7 +150,7 @@ static struct group *static_getgrnam(const char *name,
 {
 	struct group *gr;
 	struct grbuf *buf;
-	size_t buflen = sysconf(_SC_GETGR_R_SIZE_MAX);
+	size_t buflen = get_grnam_buflen();
 	char *localgroup;
 	int err;
 

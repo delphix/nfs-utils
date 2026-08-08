@@ -7,7 +7,9 @@
 #endif
 #include <sys/types.h>
 #include <sys/vfs.h>
+#include <unistd.h>
 #include <errno.h>
+#include <stddef.h>
 
 #include "nfsd_path.h"
 #include "conffile.h"

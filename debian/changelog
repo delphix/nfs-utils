@@ -1,9 +1,342 @@
-nfs-utils (1:2.6.4-3ubuntu5.1) noble; urgency=medium
+nfs-utils (1:2.8.5-1ubuntu1) resolute; urgency=medium
 
-  * SRU: LP: #2083480: No-change rebuild to disable frame pointers on
-    ppc64el and s390x.
+  * Merge with Debian unstable (LP: #2142044). Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP #1974067):
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP #1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
 
- -- Matthias Klose <doko@ubuntu.com>  Wed, 02 Oct 2024 14:40:50 +0200
+ -- John Chittum <john.chittum@canonical.com>  Tue, 17 Feb 2026 12:03:57 -0500
+
+nfs-utils (1:2.8.5-1) unstable; urgency=medium
+
+  * New upstream version 2.8.5
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 16 Feb 2026 14:50:41 +0100
+
+nfs-utils (1:2.8.4-2) unstable; urgency=medium
+
+  * Rename CONFIG_NFSV41 to CONFIG_BLKMAPD and disable by default
+  * Drop installation of blkmapd and nfs-blkmap.service systemd service
+    (Closes: #1009106)
+  * Stop nfs-blkmap.service on upgrades for removal of blkmapd
+  * nfs-common: Add NEWS entry for removal of blkmapd and nfs-blkmap.service
+  * debian/control: Remove "Priority: optional" (default)
+  * Declare compliance with Debian policy 4.7.3
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 16 Feb 2026 05:41:27 +0100
+
+nfs-utils (1:2.8.4-1ubuntu1) resolute; urgency=medium
+
+  * Merge with Debian unstable. (LP: #2130126) Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP #1974067):
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP #1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
+  * Dropped Changes:
+    - Fix FTBFS with glibc 2.42 (LP #2122270)
+
+ -- John Chittum <john.chittum@canonical.com>  Tue, 02 Dec 2025 14:55:04 -0500
+
+nfs-utils (1:2.8.4-1) unstable; urgency=medium
+
+  * New upstream version 2.8.4
+
+  [ Ben Hutchings ]
+  * d/salsa-ci.yml: Remove obsolete lintian error suppressions
+
+  [ Salvatore Bonaccorso ]
+  * debian/watch: Convert to uscan version 5
+  * nfs-common: Install nfsroot-generator into system-generators
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 14 Sep 2025 15:41:13 +0200
+
+nfs-utils (1:2.8.3-1ubuntu3) questing; urgency=medium
+
+  * Fix FTBFS with glibc 2.42 (LP: #2122270)
+
+ -- Heinrich Schuchardt <heinrich.schuchardt@canonical.com>  Sun, 07 Sep 2025 10:50:39 +0200
+
+nfs-utils (1:2.8.3-1ubuntu2) questing; urgency=medium
+
+  * Rebuild to include updated RISC-V base ISA RVA23
+
+ -- Heinrich Schuchardt <heinrich.schuchardt@canonical.com>  Sat, 06 Sep 2025 14:17:52 +0000
+
+nfs-utils (1:2.8.3-1ubuntu1) questing; urgency=medium
+
+  * Merge with Debian unstable (LP: #2112047).
+    Nothing of note in this merge, very straightforward rebase.
+    Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook (LP #1961058):
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Move the regex module to a separate binary package libnfsidmap-regex
+      (LP #1974067):
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements (LP #1977745):
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
+
+ -- Florent 'Skia' Jacquet <florent.jacquet@canonical.com>  Mon, 30 Jun 2025 16:00:10 +0200
+
+nfs-utils (1:2.8.3-1) unstable; urgency=medium
+
+  * Upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 31 Mar 2025 20:13:33 +0200
+
+nfs-utils (1:2.8.3-1~exp1) experimental; urgency=medium
+
+  * New upstream version 2.8.3
+  * debian/nfs.conf: Sync base version with upstream's nfs.conf
+  * Declare compliance with Debian policy 4.7.2
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 31 Mar 2025 19:16:49 +0200
+
+nfs-utils (1:2.8.2-3) unstable; urgency=medium
+
+  * Patch for broken libnfsimapd static and regex plugins. (Closes: #1098431)
+  * Declare compliance with Debian policy 4.7.1
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 20 Feb 2025 21:41:30 +0100
+
+nfs-utils (1:2.8.2-2ubuntu2) questing; urgency=medium
+
+  * No-change rebuild for libxml2 soname change.
+
+ -- Matthias Klose <doko@ubuntu.com>  Tue, 20 May 2025 12:24:11 +0200
+
+nfs-utils (1:2.8.2-2ubuntu1) plucky; urgency=medium
+
+  * Merge from Debian unstable (LP: #2098870). Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This package
+      contains not only plugins, but an actual shared library, with a
+      different soname.
+    - Update README file:
+      - d/README.Ubuntu: new /etc/nfs.conf config structure
+      - d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook:
+      - d/source.apport: apport hook for nfs-utils
+      - d/control: build-depend dh-apport
+      - d/rules: build with apport, and install the hook in the nfs-common
+        package which is installed on both client and servers
+    - Move the regex module to a separate binary package libnfsidmap-regex :
+      - d/control: new package, adjust breaks/conflicts
+      - d/libnfsidmap-regex.install: install the plugin file
+      - d/libnfsidmap1.install: don't install regex.so
+      - d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch: note that
+        the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements:
+      - d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also document the
+        missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the packaging
+  * Removed patches obsoleted/merged by upstream:
+    - Add more DEP8 tests:
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-mount}: specific NFSv3 mount test
+
+ -- Dave Jones <dave.jones@canonical.com>  Wed, 19 Feb 2025 16:30:13 +0000
+
+nfs-utils (1:2.8.2-2) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * Mitigate file loss in concurrent canonicalization and move between
+    packages. (DEP17 P1 M8, Closes: #1095202)
+
+  [ Salvatore Bonaccorso ]
+  * Upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Wed, 05 Feb 2025 16:35:13 +0100
+
+nfs-utils (1:2.8.2-2~exp1) experimental; urgency=medium
+
+  * Move nfs-blkmap.service to nfs-common package.
+    Add Replaces and Breaks relation for nfs-common package on the
+    nfs-kernel-server package with (<< 1:2.8.2-2~exp1~) constraints to
+    properly take over the nfs-blkmap.service service file.
+    (Closes: #1072611)
+  * debian/control: Remove Steve Langasek from Uploaders
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 03 Feb 2025 18:47:52 +0100
+
+nfs-utils (1:2.8.2-1) unstable; urgency=medium
+
+  * New upstream version 2.8.2
+  * debian/nfs.conf: Sync default for nfsd threads with upstream to 16
+  * nfs-kernel-server: Don't install anymore nfsdcltrack
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Wed, 11 Dec 2024 10:23:29 +0100
+
+nfs-utils (1:2.8.1-2) unstable; urgency=medium
+
+  * exports: Fix referrals when --enable-junction=no
+    (Closes: #1083098, #1035908)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 09 Dec 2024 19:12:25 +0100
+
+nfs-utils (1:2.8.1-1) unstable; urgency=medium
+
+  * Prepare for upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 26 Oct 2024 13:33:28 +0200
+
+nfs-utils (1:2.8.1-1~exp1) experimental; urgency=medium
+
+  * New upstream version 2.8.1
+  * debian/control: Add Build-Depends on libnl-3-dev, libnl-genl-3-dev,
+    libreadline-dev
+  * nfs-kernel-server: Install nfsdctl utility and nfsdctl(8) manpage
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 19 Oct 2024 22:21:31 +0200
+
+nfs-utils (1:2.7.1-3) unstable; urgency=medium
+
+  * rpc.idmapd: nfsopen() failures should not be fatal (Closes: #1072573)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Fri, 20 Sep 2024 20:36:56 +0200
+
+nfs-utils (1:2.7.1-2) unstable; urgency=medium
+
+  * d/control: nfs-common: Move python3 to Recommends (Closes: #1013868)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 14 Sep 2024 10:13:35 +0200
+
+nfs-utils (1:2.7.1-1) unstable; urgency=medium
+
+  * Prepare for upload to unstable
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 31 Aug 2024 15:54:43 +0200
+
+nfs-utils (1:2.7.1-1~exp1) experimental; urgency=medium
+
+  * New upstream version 2.7.1 (Closes: #1077023)
+  * debian/nfs.conf: Sync base version with upstream's nfs.conf
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Mon, 26 Aug 2024 22:12:44 +0200
+
+nfs-utils (1:2.6.4-6) unstable; urgency=medium
+
+  [ Andreas Hasenack ]
+  * d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+  * d/t/{control, v3-mount}: specific NFSv3 mount test
+  * kerberos-mount: improve cleanup()
+  * v3-mount: improve cleanup()
+  * d/t/util: remove shebang
+  * d/t/util: remove unused die() function
+
+  [ Ben Hutchings ]
+  * Stop shipping /var/lib/nfs/{etab,rmtab,state} (Closes: #1074359)
+  * Preserve /var/lib/nfs/{etab,rmtab,state} on upgrade from old version
+  * nfs-kernel-server: Don't remove /var/lib/nfs/{etab,rmtab} in a failed
+    upgrade
+  * nfs-common: Remove /var/lib/nfs/{sm,sm.bak,state} in unusual removal cases
+
+  [ Salvatore Bonaccorso ]
+  * debian/control: Replace Build-Depends on pkg-config with pkgconf
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 25 Aug 2024 20:48:59 +0200
+
+nfs-utils (1:2.6.4-5) unstable; urgency=medium
+
+  * Add missing #include <stddef.h> (Closes: #1073818)
+  * Declare compliance with Debian policy 4.7.0
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 22 Jun 2024 11:50:22 +0200
+
+nfs-utils (1:2.6.4-4ubuntu1) oracular; urgency=medium
+
+  * Merge from Debian unstable.  Remaining changes:
+    - d/control: don't provide libnfsidmap2 in libnfsidmap1. This
+      package contains not only plugins, but an actual shared library,
+      with a different soname.
+    - Update README file:
+      + d/README.Ubuntu: new /etc/nfs.conf config structure
+      + d/libnfsidmap1.docs, d/nfs-common.docs: install README.Ubuntu
+    - New apport hook:
+      + d/source.apport: apport hook for nfs-utils
+      + d/control: build-depend dh-apport
+      + d/rules: build with apport, and install the hook in the
+        nfs-common package which is installed on both client and servers
+    - Add more DEP8 tests:
+      + d/t/{control,kerberos-mount,util}: test NFSv4 krb5p mounts
+      + d/t/{control, v3-mount}: specific NFSv3 mount test
+    - Move the regex module to a separate binary package libnfsidmap-regex:
+      + d/control: new package, adjust breaks/conflicts
+      + d/libnfsidmap-regex.install: install the plugin file
+      + d/libnfsidmap1.install: don't install regex.so
+        [missed in previous d/changelog]
+      + d/p/ubuntu-idmapd-manpage-update-regex-other-package.patch:
+        note that the regex plugin is in another package
+    - rpc.svcgssd fixes and improvements:
+      + d/p/nfs-conf-manpage-missing-svcgssd-options.patch: also
+        document the missing svcgssd options to the nfs.conf(5) manpage
+    - d/not-installed: mark files we knowingly don't include in the
+      packaging
+  * Dropped changes, included in Debian:
+    - d/p/armhf-time-t-format-error.patch: resolve armhf ftbfs due to
+      time_t transition.
+
+ -- Steve Langasek <steve.langasek@ubuntu.com>  Thu, 06 Jun 2024 21:55:18 -0700
+
+nfs-utils (1:2.6.4-4) unstable; urgency=medium
+
+  * junction: export-cache: cast to a type with a known size to ensure sprintf
+    works (Closes: #1067829)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sun, 07 Apr 2024 07:01:47 +0200
 
 nfs-utils (1:2.6.4-3ubuntu5) noble; urgency=medium
 

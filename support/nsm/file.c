@@ -185,9 +185,10 @@ nsm_make_temp_pathname(const char *pathname)
 {
 	size_t size;
 	char *path;
+	const char *base;
 	int len;
 
-	size = strlen(pathname) + sizeof(".new") + 2;
+	size = strlen(pathname) + sizeof(".new") + 1;
 	if (size > PATH_MAX)
 		return NULL;
 
@@ -195,12 +196,20 @@ nsm_make_temp_pathname(const char *pathname)
 	if (path == NULL)
 		return NULL;
 
-	len = snprintf(path, size, "%s.new", pathname);
+	base = strrchr(pathname, '/');
+	if (base == NULL)
+		base = (char*)(&pathname);
+	else
+		base++;
+
+	strcpy(path, pathname);
+	len = base - pathname;
+	len += snprintf(path + len, size - len, ".%s.new", base);
+
 	if (error_check(len, size)) {
 		free(path);
 		return NULL;
 	}
-
 	return path;
 }
 
@@ -385,6 +394,7 @@ _Bool
 nsm_drop_privileges(const int pidfd)
 {
 	struct stat st;
+	uid_t uid;
 
 	(void)umask(S_IRWXO);
 
@@ -397,6 +407,16 @@ nsm_drop_privileges(const int pidfd)
 	if (lstat(NSM_MONITOR_DIR, &st) == -1) {
 		xlog(L_ERROR, "Failed to stat %s/%s: %m", nsm_base_dirname, NSM_MONITOR_DIR);
 		return false;
+	}
+
+	/*
+	 * Check if we are running as non-root user and we are the owner of
+	 * the monitor directory.  Then there is no reason to drop privileges
+	 * and change groups etc.
+	 */
+	uid = getuid();
+	if (uid != 0 && uid == st.st_uid) {
+		return true;
 	}
 
 	if (!prune_bounding_set())

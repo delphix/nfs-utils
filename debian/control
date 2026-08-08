@@ -1,11 +1,10 @@
 Source: nfs-utils
-Priority: optional
 Section: net
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 XSBC-Original-Maintainer: Debian kernel team <debian-kernel@lists.debian.org>
-Uploaders: Anibal Monsalve Salazar <anibal@debian.org>, Ben Hutchings <benh@debian.org>, Steve Langasek <vorlon@debian.org>, Salvatore Bonaccorso <carnil@debian.org>
-Build-Depends: debhelper-compat (= 13), libwrap0-dev, libevent-dev, libkrb5-dev, libblkid-dev, libkeyutils-dev, pkg-config, libldap2-dev, libcap-dev, libtirpc-dev, libdevmapper-dev, libmount-dev, libsqlite3-dev, libxml2-dev, dh-apport
-Standards-Version: 4.6.2
+Uploaders: Anibal Monsalve Salazar <anibal@debian.org>, Ben Hutchings <benh@debian.org>, Salvatore Bonaccorso <carnil@debian.org>
+Build-Depends: debhelper-compat (= 13), libwrap0-dev, libevent-dev, libkrb5-dev, libblkid-dev, libkeyutils-dev, pkgconf, libldap2-dev, libcap-dev, libtirpc-dev, libdevmapper-dev, libmount-dev, libnl-3-dev, libnl-genl-3-dev, libreadline-dev, libsqlite3-dev, libxml2-dev, dh-apport
+Standards-Version: 4.7.3
 Homepage: https://linux-nfs.org/
 Vcs-Git: https://salsa.debian.org/kernel-team/nfs-utils.git
 Vcs-Browser: https://salsa.debian.org/kernel-team/nfs-utils
@@ -34,10 +33,11 @@ Description: support for NFS kernel server
 Package: nfs-common
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}
-Depends: ${shlibs:Depends}, ${misc:Depends}, libnfsidmap1 (= ${binary:Version}), rpcbind, adduser, ucf, keyutils, python3
+Depends: ${shlibs:Depends}, ${misc:Depends}, libnfsidmap1 (= ${binary:Version}), rpcbind, adduser, ucf, keyutils
+Recommends: python3
 Suggests: open-iscsi, watchdog
 Provides: nfs-client
-Conflicts: nfs-client
+Conflicts: nfs-client, nfs-kernel-server (<< 1:2.8.2-2~exp1~)
 Replaces: nfs-client
 Description: NFS support files common to client and server
  Use this package on any machine that uses NFS, either as client or

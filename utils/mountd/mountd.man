@@ -55,7 +55,7 @@ The
 daemon registers every successful MNT request by adding an entry to the
 .I /var/lib/nfs/rmtab
 file.
-When receivng a UMNT request from an NFS client,
+When receiving a UMNT request from an NFS client,
 .B rpc.mountd
 simply removes the matching entry from
 .IR /var/lib/nfs/rmtab ,

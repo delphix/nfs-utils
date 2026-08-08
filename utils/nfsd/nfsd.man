@@ -43,7 +43,7 @@ NFSv4.1 and later require the server to report a "scope" which is used
 by the clients to detect if two connections are to the same server.
 By default Linux NFSD uses the host name as the scope.
 .sp
-It is particularly important for high-availablity configurations to ensure
+It is particularly important for high-availability configurations to ensure
 that all potential server nodes report the same server scope.
 .TP
 .B \-p " or " \-\-port  port

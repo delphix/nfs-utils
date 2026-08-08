@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = upgrade ] && dpkg --compare-versions "$2" lt 1:2.6.4-6~; then
+    # This file is local state but was wrongly shipped as an empty
+    # file in older versions.  On upgrade from an older version dpkg
+    # will remove it.  Create a protective link so we can at least
+    # restore it in postinst.
+    if [ -f /var/lib/nfs/state ]; then
+	ln /var/lib/nfs/state /var/lib/nfs/state.bak
+    fi
+fi
+
+if [ "$1" = upgrade ] && dpkg --compare-versions "$2" lt 1:2.8.4-2~; then
+    # If upgrading from a version before the removal of blkmapd and we are under
+    # systemd and the nfs-blkmap.service is potentially running, stop it.
+    # Make sure that if nfs-blkmap.service systemd service was installed, disable
+    # the service and remove all deb-systemd-helper state files.
+    if [ -z "$DPKG_ROOT" ] && [ -d /run/systemd/system ] ; then
+        deb-systemd-invoke stop 'nfs-blkmap.service' >/dev/null || true
+    fi
+    if deb-systemd-helper debian-installed 'nfs-blkmap.service'; then
+        deb-systemd-helper disable 'nfs-blkmap.service' >/dev/null || true
+    fi
+    deb-systemd-helper purge 'nfs-blkmap.service' || true
+    deb-systemd-helper unmask 'nfs-blkmap.service' || true
+fi
+
+#DEBHELPER#

@@ -1,3 +1,17 @@
+nfs-utils (1:2.8.4-2) unstable; urgency=medium
+
+  This version removes blkmapd and the associated nfs-blkmap.service
+  systemd service.
+
+  pNFS block layout is deprecated in favor of pNFS SCSI layout. This is
+  because block layout could easily result in data loss, as documented
+  in <https://linux-nfs.org/wiki/index.php/PNFS_block_server_setup>.
+
+  Users of pNFS are advised to move to the revised SCSI/NVMe layouts
+  that are safe to use and don't require the use of blkmapd.
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Thu, 29 Jan 2026 22:21:44 +0100
+
 nfs-utils (1:2.6.1-1) unstable; urgency=medium
 
   On systems running systemd, changes to command-line options in

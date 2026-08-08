@@ -1,3 +1,5 @@
-version=4
-opts="pgpsigurlmangle=s%@ARCHIVE_EXT@$%.tar.sign%,decompress" \
-https://www.kernel.org/pub/linux/utils/nfs-utils/@ANY_VERSION@/nfs-utils-@ANY_VERSION@@ARCHIVE_EXT@
+Version: 5
+Source: https://www.kernel.org/pub/linux/utils/nfs-utils/@ANY_VERSION@/
+Matching-Pattern: nfs-utils-@ANY_VERSION@@ARCHIVE_EXT@
+Decompress: yes
+Pgpsigurlmangle: s%@ARCHIVE_EXT@$%.tar.sign%
