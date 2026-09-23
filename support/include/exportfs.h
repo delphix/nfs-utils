@@ -10,6 +10,7 @@
 #define EXPORTFS_H
 
 #include <netdb.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "sockaddr.h"
@@ -45,6 +46,8 @@ typedef struct mclient {
 	union nfs_sockaddr	m_addrlist[NFSCLNT_ADDRMAX];
 	int			m_exported;	/* exported to nfsd */
 	int			m_count;
+	uint64_t		m_match_gen;	/* generation m_match is valid for */
+	bool			m_match;	/* cached client_matches() result */
 } nfs_client;
 
 static inline const struct sockaddr *
