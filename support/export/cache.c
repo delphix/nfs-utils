@@ -387,23 +387,31 @@ static int uuid_by_path(char *path, struct exportent *exp, int type,
 	const char *val;
 	int rc;
 
-	/* fast path for zfs and type 1 to avoid throw-away statfs call */
-	if (type > 0 && st.f_type == ZFS_SUPER_MAGIC)
+	/*
+	 * Only type 0 can yield a uuid.  get_uuid_blkdev() is consulted
+	 * under "type == 0" alone, so for any higher type blkid_val is NULL
+	 * and the first arm below short-circuits without reaching its
+	 * "type--"; the statfs arm then fails too, because type is still
+	 * above 0.  Every type > 0 call therefore falls through to the
+	 * trailing "return 0" -- answer it here and skip the statfs() that
+	 * would have been thrown away.
+	 */
+	if (type > 0)
 		return 0;
 
-	/* Delphix -- Use cached fsid value if available */
-	if (type == 0) {
-		pthread_mutex_lock(&exp_fsid_lock);
-		if (exp->e_fsid_value[0] != '\0') {
-			get_uuid(exp->e_fsid_value, uuidlen, uuid);
-			pthread_mutex_unlock(&exp_fsid_lock);
-			return 1;
-		}
+	/* Delphix -- Use cached fsid value if available.  type is 0 here. */
+	pthread_mutex_lock(&exp_fsid_lock);
+	if (exp->e_fsid_value[0] != '\0') {
+		get_uuid(exp->e_fsid_value, uuidlen, uuid);
 		pthread_mutex_unlock(&exp_fsid_lock);
+		return 1;
 	}
+	pthread_mutex_unlock(&exp_fsid_lock);
 
 	rc = nfsd_path_statfs(path, &st);
 
+	/* type is always 0 here; see the "type > 0" early return above,
+	 * whose equivalence depends on this guard staying put. */
 	if (type == 0 && rc == 0) {
 		const unsigned long *bad;
 		for (bad = nonblkid_filesystems; *bad; bad++) {
