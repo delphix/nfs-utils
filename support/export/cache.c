@@ -385,33 +385,46 @@ static int uuid_by_path(char *path, struct exportent *exp, int type,
 	char fsid_val[17];
 	const char *blkid_val = NULL;
 	const char *val;
+	int cached;
 	int rc;
 
 	/*
 	 * Only type 0 can yield a uuid.  get_uuid_blkdev() is consulted
-	 * under "type == 0" alone, so for any higher type blkid_val is NULL
+	 * under "type == 0" alone, so for any other type blkid_val is NULL
 	 * and the first arm below short-circuits without reaching its
-	 * "type--"; the statfs arm then fails too, because type is still
-	 * above 0.  Every type > 0 call therefore falls through to the
-	 * trailing "return 0" -- answer it here and skip the statfs() that
-	 * would have been thrown away.
+	 * "type--"; the statfs arm's "(type--) == 0" is false for the same
+	 * reason, whether type is above or below 0.  Every type != 0 call
+	 * therefore falls through to the trailing "return 0" -- answer it
+	 * here and skip the statfs() that would have been thrown away.
+	 *
+	 * The test is "!= 0" rather than "> 0" so that a negative type stays
+	 * out of the cached-fsid check below, which the original "type == 0"
+	 * guard excluded it from.  No caller passes one (both start at 0 and
+	 * only increment), so this is about not widening the guard silently.
 	 */
-	if (type > 0)
+	if (type != 0)
 		return 0;
 
-	/* Delphix -- Use cached fsid value if available.  type is 0 here. */
+	/*
+	 * Delphix -- Use cached fsid value if available.  type is 0 here.
+	 * One lock and one unlock on a single path, so a return added
+	 * between them later cannot leak the lock.
+	 */
 	pthread_mutex_lock(&exp_fsid_lock);
-	if (exp->e_fsid_value[0] != '\0') {
+	cached = exp->e_fsid_value[0] != '\0';
+	if (cached)
 		get_uuid(exp->e_fsid_value, uuidlen, uuid);
-		pthread_mutex_unlock(&exp_fsid_lock);
-		return 1;
-	}
 	pthread_mutex_unlock(&exp_fsid_lock);
+	if (cached)
+		return 1;
 
 	rc = nfsd_path_statfs(path, &st);
 
-	/* type is always 0 here; see the "type > 0" early return above,
-	 * whose equivalence depends on this guard staying put. */
+	/* type is always 0 here, so the "type == 0" conjunct is redundant.
+	 * Keep it anyway: it is what the "type != 0" early return above is
+	 * equivalent to, so dropping it as dead code would let a later
+	 * upstream change to this line invalidate that return with no merge
+	 * conflict to notice. */
 	if (type == 0 && rc == 0) {
 		const unsigned long *bad;
 		for (bad = nonblkid_filesystems; *bad; bad++) {
