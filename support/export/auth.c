@@ -181,11 +181,17 @@ bool namelist_client_matches(nfs_export *exp, char *dom)
  * mountd's workers are forked processes, not threads: cache_fork_workers()
  * forks, and both mountd and exportd start their workers through it.  The
  * only thread the process can hold is nfsd_path.c's chroot workqueue, which
- * is created just when a chroot rootdir is configured, runs nothing but the
- * syscall closures in that file, and blocks its submitter for the duration.
- * Nothing but the process doing the walk reaches this state, so it needs no
- * locking; cache.c's exp_fsid_lock guards a different thing (e_fsid_value,
- * added by DLPX-82097) and doesn't imply otherwise.
+ * exists only in a build with HAVE_SCHED_H && HAVE_LIBPTHREAD &&
+ * HAVE_UNSHARE and only when "[exports] rootdir" is set, runs nothing but
+ * the syscall closures in nfsd_path.c, and blocks its submitter for the
+ * duration.  None of this state is touched from that thread, so it needs
+ * no locking; cache.c's exp_fsid_lock guards a different thing
+ * (e_fsid_value, added by DLPX-82097) and doesn't imply otherwise.
+ *
+ * The bracket does not nest.  client_match_active is a flag rather than a
+ * depth, so an inner client_match_end() would deactivate the cache for a
+ * still-running outer walk.  No caller nests today; one that needs to
+ * should make this a depth counter rather than pair up the calls by hand.
  */
 static uint64_t		client_match_gen;
 static bool		client_match_active;

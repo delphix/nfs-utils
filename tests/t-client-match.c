@@ -55,13 +55,19 @@ static nfs_client	test_client;
 static nfs_export	test_export;
 
 static void
+init_client(nfs_client *clp, nfs_export *exp, const char *hostname)
+{
+	memset(clp, 0, sizeof(*clp));
+	memset(exp, 0, sizeof(*exp));
+	clp->m_hostname = (char *)hostname;
+	clp->m_type = MCL_FQDN;
+	exp->m_client = clp;
+}
+
+static void
 setup(const char *hostname)
 {
-	memset(&test_client, 0, sizeof(test_client));
-	memset(&test_export, 0, sizeof(test_export));
-	test_client.m_hostname = (char *)hostname;
-	test_client.m_type = MCL_FQDN;
-	test_export.m_client = &test_client;
+	init_client(&test_client, &test_export, hostname);
 }
 
 int
@@ -119,11 +125,7 @@ main(void)
 		nfs_client other_client;
 		nfs_export other_export;
 
-		memset(&other_client, 0, sizeof(other_client));
-		memset(&other_export, 0, sizeof(other_export));
-		other_client.m_hostname = (char *)"delta";
-		other_client.m_type = MCL_FQDN;
-		other_export.m_client = &other_client;
+		init_client(&other_client, &other_export, "delta");
 
 		client_match_begin();
 		check("first client matches",
