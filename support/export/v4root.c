@@ -56,6 +56,19 @@ static nfs_export pseudo_root = {
 	.m_warned = 0,
 };
 
+/*
+ * Whether /etc/krb5.keytab exists, sampled once per v4root_set() rather
+ * than once per krb5 flavour per pseudo-export.  v4root_set() visits every
+ * ancestor of every export, so on a large table the unhoisted probe asks
+ * the same question hundreds of thousands of times per reload.
+ */
+static int pseudofs_have_keytab;
+
+/*
+ * Only valid from a v4root_set() walk, which samples the keytab up front;
+ * elsewhere it would read a stale sample and silently drop the krb5
+ * flavours from sec=.
+ */
 static void
 set_pseudofs_security(struct exportent *pseudo)
 {
@@ -67,7 +80,7 @@ set_pseudofs_security(struct exportent *pseudo)
 
 		if (!flav->fnum)
 			continue;
-		if (flav->need_krb5 && access("/etc/krb5.keytab", F_OK) != 0)
+		if (flav->need_krb5 && !pseudofs_have_keytab)
 			continue;
 
 		i = secinfo_addflavor(flav, pseudo);
@@ -210,6 +223,8 @@ v4root_set(void)
 		return;
 	if (!v4root_support())
 		return;
+
+	pseudofs_have_keytab = (access("/etc/krb5.keytab", F_OK) == 0);
 
 	for (i = 0; i < MCL_MAXTYPES; i++) {
 		for (exp = exportlist[i].p_head; exp; exp = exp->m_next) {
