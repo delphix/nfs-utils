@@ -162,11 +162,67 @@ bool namelist_client_matches(nfs_export *exp, char *dom)
 	return client_member(dom, exp->m_client->m_hostname);
 }
 
+/*
+ * client_matches() depends only on exp->m_client, but lookup_export()
+ * calls it once per export.  A server that exports many paths to the same
+ * set of clients therefore recomputes each answer once per path, and for a
+ * netgroup client that answer can cost a reverse resolution.
+ *
+ * Cache the answer on the client for the length of one export walk, which
+ * the walk brackets with client_match_begin() and client_match_end().
+ * Outside a bracket the cache is inert, and that is the point:
+ * auth_authenticate_newcache() answers MOUNT by walking the table with its
+ * own (dom, ai), testing each entry's own m_client, so a live cache would
+ * hand it verdicts computed for a different host.  Since client_matches()
+ * decides authorisation, what matters is that the cache is unreachable
+ * rather than that it saves work -- a caller added later that does not know
+ * about the bracket loses the optimisation, not the verdict.
+ *
+ * mountd's workers are forked processes, not threads, so this needs no
+ * locking.
+ */
+static uint64_t		client_match_gen;
+static bool		client_match_active;
+
+void client_match_begin(void)
+{
+	client_match_active = true;
+
+	/*
+	 * 0 is the calloc()ed "never evaluated" state; never reuse it.  The
+	 * counter is 64 bits because a client keeps its stamp until it is
+	 * next evaluated, and the prefilter in export_matches() can skip one
+	 * for many consecutive walks, so a narrower counter could wrap back
+	 * onto a stamp still in use.
+	 */
+	if (++client_match_gen == 0)
+		client_match_gen = 1;
+}
+
+void client_match_end(void)
+{
+	client_match_active = false;
+}
+
 bool client_matches(nfs_export *exp, char *dom, struct addrinfo *ai)
 {
+	nfs_client *clp = exp->m_client;
+	bool res;
+
+	if (client_match_active && clp->m_match_gen == client_match_gen)
+		return clp->m_match;
+
 	if (is_ipaddr_client(dom))
-		return ipaddr_client_matches(exp, ai);
-	return namelist_client_matches(exp, dom);
+		res = ipaddr_client_matches(exp, ai);
+	else
+		res = namelist_client_matches(exp, dom);
+
+	if (client_match_active) {
+		clp->m_match = res;
+		clp->m_match_gen = client_match_gen;
+	}
+
+	return res;
 }
 
 /* return static nfs_export with details filled in */
