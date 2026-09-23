@@ -178,8 +178,14 @@ bool namelist_client_matches(nfs_export *exp, char *dom)
  * rather than that it saves work -- a caller added later that does not know
  * about the bracket loses the optimisation, not the verdict.
  *
- * mountd's workers are forked processes, not threads, so this needs no
- * locking.
+ * mountd's workers are forked processes, not threads: cache_fork_workers()
+ * forks, and both mountd and exportd start their workers through it.  The
+ * only thread the process can hold is nfsd_path.c's chroot workqueue, which
+ * is created just when a chroot rootdir is configured, runs nothing but the
+ * syscall closures in that file, and blocks its submitter for the duration.
+ * Nothing but the process doing the walk reaches this state, so it needs no
+ * locking; cache.c's exp_fsid_lock guards a different thing (e_fsid_value,
+ * added by DLPX-82097) and doesn't imply otherwise.
  */
 static uint64_t		client_match_gen;
 static bool		client_match_active;
