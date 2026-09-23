@@ -606,10 +606,41 @@ static int path_matches(nfs_export *exp, char *path)
 		    && is_subdirectory(path, exp->m_export.e_path));
 }
 
+/*
+ * @nslashes is count_slashes(path).  The caller computes it once: it is
+ * invariant across the walk, where path is fixed.
+ */
 static int
-export_matches(nfs_export *exp, char *dom, char *path, struct addrinfo *ai)
+export_matches(nfs_export *exp, char *dom, char *path, int nslashes,
+	       struct addrinfo *ai)
 {
-	return path_matches(exp, path) && client_matches(exp, dom, ai);
+	/*
+	 * Reject on the component count first, where we can: it is the one
+	 * test that costs nothing.  Without CROSSMOUNT, path_matches() is
+	 * same_path(), which returns 0 whenever the counts differ -- and an
+	 * exact strcmp match implies equal counts -- so this is that check
+	 * hoisted, not a new one.
+	 */
+	if (!(exp->m_export.e_flags & NFSEXP_CROSSMOUNT) &&
+	    nslashes != count_slashes(exp->m_export.e_path))
+		return 0;
+
+	/*
+	 * Then the client, before the path.  client_matches() is an
+	 * in-memory test cached per client for the length of this walk,
+	 * whereas path_matches() can fall through to same_path(), which
+	 * resolves a file handle for the child and one for the parent.
+	 * Checking the client first is the difference between two syscalls
+	 * per export entry and none.  Both predicates are pure, so the
+	 * match set is unchanged.
+	 *
+	 * This does widen which clients get tested, to every distinct
+	 * client the prefilter admits rather than only those on a matching
+	 * path.  That is free unless use_ipaddr is set, and even then only
+	 * MCL_WILDCARD and MCL_NETGROUP resolve; the per-client cache holds
+	 * those to one lookup per client per walk.
+	 */
+	return client_matches(exp, dom, ai) && path_matches(exp, path);
 }
 
 /* True iff e1 is a child of e2 (or descendant) and e2 has crossmnt set: */
@@ -1211,16 +1242,17 @@ static int dump_to_cache(int f, char *buf, int blen, char *domain,
 }
 
 static nfs_export *
-lookup_export(char *dom, char *path, struct addrinfo *ai)
+lookup_export_walk(char *dom, char *path, struct addrinfo *ai)
 {
 	nfs_export *exp;
 	nfs_export *found = NULL;
 	int found_type = 0;
+	int nslashes = count_slashes(path);
 	int i;
 
 	for (i=0 ; i < MCL_MAXTYPES; i++) {
 		for (exp = exportlist[i].p_head; exp; exp = exp->m_next) {
-			if (!export_matches(exp, dom, path, ai))
+			if (!export_matches(exp, dom, path, nslashes, ai))
 				continue;
 			if (!found) {
 				found = exp;
@@ -1258,6 +1290,24 @@ lookup_export(char *dom, char *path, struct addrinfo *ai)
 		}
 	}
 	return found;
+}
+
+static nfs_export *
+lookup_export(char *dom, char *path, struct addrinfo *ai)
+{
+	nfs_export *exp;
+
+	/*
+	 * Bracket the per-client match cache around the walk, where dom and
+	 * ai are fixed; see client_matches() for why it must be inert
+	 * outside one.  The walk is its own function so that a return added
+	 * inside it cannot skip client_match_end().
+	 */
+	client_match_begin();
+	exp = lookup_export_walk(dom, path, ai);
+	client_match_end();
+
+	return exp;
 }
 
 #ifdef HAVE_JUNCTION_SUPPORT
