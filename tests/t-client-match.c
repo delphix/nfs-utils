@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #include "nfslib.h"
 #include "exportfs.h"
@@ -68,6 +69,36 @@ static void
 setup(const char *hostname)
 {
 	init_client(&test_client, &test_export, hostname);
+}
+
+/*
+ * client_matches() takes a second path when the caller is in "use_ipaddr"
+ * mode (dom[0] == '$'): ipaddr_client_matches() -> client_check(), which
+ * compares the caller's struct addrinfo against the client's own address
+ * list instead of matching dom by name.  A deployment lands on this path
+ * once use_ipaddr auto-enables (check_useipaddr(), auth.c), and it's also
+ * the one MCL_WILDCARD and MCL_NETGROUP resolve through -- the case this
+ * PR's client-before-path reordering optimises for.  Exercise it too,
+ * rather than only the namelist path above.
+ *
+ * MCL_WILDCARD and MCL_NETGROUP themselves resolve through a reverse DNS
+ * lookup (host_canonname()) and, for MCL_NETGROUP, innetgr(3) -- neither
+ * hermetic in a unit test.  MCL_FQDN's client_check() is pure address
+ * comparison (nfs_compare_sockaddr(), no DNS), so it drives the same
+ * client_matches()/cache code on the ipaddr path without a network
+ * dependency; the cache does not care which nfs_client type produced the
+ * verdict it is holding.
+ */
+static void
+init_fqdn_ai(struct addrinfo *ai, struct sockaddr_in *sin, uint32_t addr)
+{
+	memset(sin, 0, sizeof(*sin));
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = htonl(addr);
+
+	memset(ai, 0, sizeof(*ai));
+	ai->ai_addr = (struct sockaddr *)sin;
+	ai->ai_addrlen = sizeof(*sin);
 }
 
 int
@@ -174,6 +205,41 @@ main(void)
 
 		check("the same call outside the walk is recomputed",
 		      client_matches(&test_export, "alpha", NULL), 1);
+	}
+
+	/* The ip-address-keyed path: see init_fqdn_ai()'s comment above. */
+	{
+		nfs_client	ipaddr_client;
+		nfs_export	ipaddr_export;
+		struct addrinfo	client_addr_ai, match_ai, nomatch_ai;
+		struct sockaddr_in client_addr_sin, match_sin, nomatch_sin;
+
+		memset(&ipaddr_client, 0, sizeof(ipaddr_client));
+		memset(&ipaddr_export, 0, sizeof(ipaddr_export));
+		ipaddr_client.m_type = MCL_FQDN;
+		ipaddr_client.m_hostname = (char *)"192.0.2.1";
+		ipaddr_client.m_naddr = 1;
+		init_fqdn_ai(&client_addr_ai, &client_addr_sin, 0xc0000201); /* 192.0.2.1 */
+		set_addrlist(&ipaddr_client, 0, client_addr_ai.ai_addr);
+		ipaddr_export.m_client = &ipaddr_client;
+
+		init_fqdn_ai(&match_ai, &match_sin, 0xc0000201);     /* 192.0.2.1 */
+		init_fqdn_ai(&nomatch_ai, &nomatch_sin, 0xc0000202); /* 192.0.2.2 */
+
+		check("ipaddr path: matching address",
+		      client_matches(&ipaddr_export, "$192.0.2.1", &match_ai), 1);
+		check("ipaddr path: non-matching address",
+		      client_matches(&ipaddr_export, "$192.0.2.1", &nomatch_ai), 0);
+
+		client_match_begin();
+		(void) client_matches(&ipaddr_export, "$192.0.2.1", &match_ai);
+		ipaddr_client.m_match = false;	/* the predicate would say true */
+		check("ipaddr path: in-walk repeat is served from the cache",
+		      client_matches(&ipaddr_export, "$192.0.2.1", &match_ai), 0);
+		client_match_end();
+
+		check("ipaddr path: recomputed outside the walk",
+		      client_matches(&ipaddr_export, "$192.0.2.1", &match_ai), 1);
 	}
 
 	if (failures) {

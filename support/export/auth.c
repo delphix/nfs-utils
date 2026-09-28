@@ -192,6 +192,18 @@ bool namelist_client_matches(nfs_export *exp, char *dom)
  * depth, so an inner client_match_end() would deactivate the cache for a
  * still-running outer walk.  No caller nests today; one that needs to
  * should make this a depth counter rather than pair up the calls by hand.
+ *
+ * The cache is keyed on the client alone (nfs_client::m_match_gen), not on
+ * (client, dom, ai).  That is sound only because every bracket today holds
+ * dom and ai fixed for its whole extent -- lookup_export()'s one bracket is
+ * one requester walking many export entries, never the other way round
+ * (cache.c).  A bracket that instead holds the export fixed and varies the
+ * requester (dom, ai) across calls -- e.g. wiring nfsd_handle_fh() into
+ * this cache (DLPX-99252) -- must not reuse this cache as-is: two
+ * different hosts that share an m_client (a wildcard or netgroup entry)
+ * would silently get served each other's verdict within the same
+ * generation.  Such a caller needs the key widened to include dom/ai,
+ * not just a new bracket.
  */
 static uint64_t		client_match_gen;
 static bool		client_match_active;
