@@ -56,18 +56,45 @@ static nfs_export pseudo_root = {
 	.m_warned = 0,
 };
 
+/*
+ * Whether /etc/krb5.keytab exists, sampled once per v4root_set() rather
+ * than once per krb5 flavour per pseudo-export.  v4root_set() visits every
+ * ancestor of every export, so on a large table the unhoisted probe asks
+ * the same question hundreds of thousands of times per reload.
+ *
+ * KEYTAB_UNSAMPLED means no walk has sampled it: v4root_set() takes the
+ * sample on entry and restores KEYTAB_UNSAMPLED on exit, so a caller that
+ * reaches set_pseudofs_security() from outside a walk pays one access()
+ * instead of reading a stale sample and silently dropping the krb5
+ * flavours from sec=.  As with the client match cache in auth.c, skipping
+ * the prologue costs the saving rather than the answer.
+ */
+#define	KEYTAB_UNSAMPLED	(-1)
+
+static int pseudofs_have_keytab = KEYTAB_UNSAMPLED;
+
+static int
+keytab_present(void)
+{
+	return access("/etc/krb5.keytab", F_OK) == 0;
+}
+
 static void
 set_pseudofs_security(struct exportent *pseudo)
 {
 	struct flav_info *flav;
+	int have_keytab;
 	int i;
+
+	have_keytab = pseudofs_have_keytab == KEYTAB_UNSAMPLED ?
+		keytab_present() : pseudofs_have_keytab;
 
 	for (flav = flav_map; flav < flav_map + flav_map_size; flav++) {
 		struct sec_entry *new;
 
 		if (!flav->fnum)
 			continue;
-		if (flav->need_krb5 && access("/etc/krb5.keytab", F_OK) != 0)
+		if (flav->need_krb5 && !have_keytab)
 			continue;
 
 		i = secinfo_addflavor(flav, pseudo);
@@ -211,6 +238,8 @@ v4root_set(void)
 	if (!v4root_support())
 		return;
 
+	pseudofs_have_keytab = keytab_present();
+
 	for (i = 0; i < MCL_MAXTYPES; i++) {
 		for (exp = exportlist[i].p_head; exp; exp = exp->m_next) {
 			if (exp->m_export.e_flags & NFSEXP_V4ROOT)
@@ -231,4 +260,6 @@ v4root_set(void)
 			/* XXX: error handling! */
 		}
 	}
+
+	pseudofs_have_keytab = KEYTAB_UNSAMPLED;
 }
