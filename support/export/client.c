@@ -333,6 +333,12 @@ client_dup(const nfs_client *clp, const struct addrinfo *ai)
 	memcpy(new, clp, sizeof(*new));
 	new->m_type = MCL_FQDN;
 	new->m_hostname = NULL;
+	/*
+	 * The copy is a different client spec, so the source's cached
+	 * client_matches() verdict does not apply to it.
+	 */
+	new->m_match_gen = 0;
+	new->m_match = false;
 
 	if (!client_init(new, ai->ai_canonname, ai)) {
 		client_free(new);

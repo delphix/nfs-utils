@@ -37,6 +37,8 @@ int		cache_process(fd_set *readfds);
 bool ipaddr_client_matches(nfs_export *exp, struct addrinfo *ai);
 bool namelist_client_matches(nfs_export *exp, char *dom);
 bool client_matches(nfs_export *exp, char *dom, struct addrinfo *ai);
+void client_match_begin(void);
+void client_match_end(void);
 
 static inline bool is_ipaddr_client(char *dom)
 {
