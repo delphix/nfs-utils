@@ -162,11 +162,93 @@ bool namelist_client_matches(nfs_export *exp, char *dom)
 	return client_member(dom, exp->m_client->m_hostname);
 }
 
+/*
+ * client_matches() depends only on exp->m_client, but lookup_export()
+ * calls it once per export.  A server that exports many paths to the same
+ * set of clients therefore recomputes each answer once per path, and for a
+ * wildcard or netgroup client that answer can cost a reverse DNS lookup
+ * (host_canonname()).
+ *
+ * Cache the answer on the client for the length of one export walk, which
+ * the walk brackets with client_match_begin() and client_match_end().
+ * Outside a bracket the cache is inert, and that is the point:
+ * auth_authenticate_newcache() answers MOUNT by walking the table with its
+ * own (dom, ai), testing each entry's own m_client, so a live cache would
+ * hand it verdicts computed for a different host.  Since client_matches()
+ * decides authorisation, what matters is that the cache is unreachable
+ * rather than that it saves work -- a caller added later that does not know
+ * about the bracket loses the optimisation, not the verdict.
+ *
+ * mountd's workers are forked processes, not threads: cache_fork_workers()
+ * forks, and both mountd and exportd start their workers through it.  The
+ * only thread the process can hold is nfsd_path.c's chroot workqueue, which
+ * exists only in a build with HAVE_SCHED_H && HAVE_LIBPTHREAD &&
+ * HAVE_UNSHARE and only when "[exports] rootdir" is set, runs nothing but
+ * the syscall closures in nfsd_path.c, and blocks its submitter for the
+ * duration.  None of this state is touched from that thread, so it needs
+ * no locking; cache.c's exp_fsid_lock guards a different thing
+ * (e_fsid_value, added by DLPX-82097) and doesn't imply otherwise.
+ *
+ * The bracket does not nest.  client_match_active is a flag rather than a
+ * depth, so an inner client_match_end() would deactivate the cache for a
+ * still-running outer walk.  No caller nests today; one that needs to
+ * should make this a depth counter rather than pair up the calls by hand.
+ *
+ * The cache is keyed on the client alone (nfs_client::m_match_gen), not on
+ * (client, dom, ai).  That is sound only because every bracket today holds
+ * dom and ai fixed for its whole extent -- lookup_export()'s one bracket is
+ * one requester walking many export entries, never the other way round
+ * (cache.c).  nfsd_handle_fh() has the same shape (one dom and ai per
+ * upcall), so bracketing its walk (DLPX-99252) needs no change here.  A
+ * bracket that instead holds the export fixed and varies the requester
+ * (dom, ai) across calls must not reuse this cache as-is: two different
+ * hosts that share an m_client (a wildcard or netgroup entry) would
+ * silently get served each other's verdict within the same generation.
+ * Such a caller needs the key widened to include dom/ai, not just a new
+ * bracket.
+ */
+static uint64_t		client_match_gen;
+static bool		client_match_active;
+
+void client_match_begin(void)
+{
+	client_match_active = true;
+
+	/*
+	 * 0 is the calloc()ed "never evaluated" state; never reuse it.  The
+	 * counter is 64 bits because a client keeps its stamp until it is
+	 * next evaluated, and the prefilter in export_matches() can skip one
+	 * for many consecutive walks, so a narrower counter could wrap back
+	 * onto a stamp still in use.
+	 */
+	if (++client_match_gen == 0)
+		client_match_gen = 1;
+}
+
+void client_match_end(void)
+{
+	client_match_active = false;
+}
+
 bool client_matches(nfs_export *exp, char *dom, struct addrinfo *ai)
 {
+	nfs_client *clp = exp->m_client;
+	bool res;
+
+	if (client_match_active && clp->m_match_gen == client_match_gen)
+		return clp->m_match;
+
 	if (is_ipaddr_client(dom))
-		return ipaddr_client_matches(exp, ai);
-	return namelist_client_matches(exp, dom);
+		res = ipaddr_client_matches(exp, ai);
+	else
+		res = namelist_client_matches(exp, dom);
+
+	if (client_match_active) {
+		clp->m_match = res;
+		clp->m_match_gen = client_match_gen;
+	}
+
+	return res;
 }
 
 /* return static nfs_export with details filled in */
